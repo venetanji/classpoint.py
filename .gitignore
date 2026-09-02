@@ -1,0 +1,8 @@
+# ClassPoint's button artwork is Inknoe's, not ours — extract it from your own
+# deck with classpoint.extract_buttons() rather than committing it here.
+assets/*.png
+
+__pycache__/
+*.pyc
+.venv/
+*.pptx
