@@ -141,6 +141,10 @@ Three things make it safe to run unattended:
   fails the build instead of quietly pointing students at the wrong answers.
 - **Anonymous activities are withheld.** See below.
 
+For a week delivered before its deck existed there is nothing to parse, so the questions
+stay blank — write them into `deck/weekNN-reports.json` by hand once and they survive every
+run after that.
+
 ## ⚠️ Public means public
 
 Anyone with an activity id can read every response on it, *and* the participant names. Two

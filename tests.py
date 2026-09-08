@@ -103,5 +103,14 @@ with tempfile.TemporaryDirectory() as d:
     order = [l for l in ans.read_text().splitlines() if l.startswith('## ')]
     check('weeks stay in week order however they arrive', order == ['## week01', '## week02', '## week03'])
 
+with tempfile.TemporaryDirectory() as d:
+    m = pathlib.Path(d) / 'week01-reports.json'
+    check('nothing recorded yet is not an error', weekly.prior_questions(m) == {})
+    m.write_text(json.dumps([{'activity': IDS[0], 'question': 'Typed in by hand'},
+                             {'activity': None, 'question': 'Withheld, no id to key on'},
+                             {'activity': IDS[1], 'question': None}]))
+    check('a question typed in by hand survives the next run',
+          weekly.prior_questions(m) == {IDS[0]: 'Typed in by hand'})
+
 print(f'\n{len(fails)} FAILED: {fails}' if fails else '\nall checks passed')
 sys.exit(1 if fails else 0)

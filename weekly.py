@@ -99,6 +99,14 @@ def collect(refs, *, on=None, link_anonymous=False) -> list[dict]:
     return entries
 
 
+def prior_questions(mapping: Path) -> dict[str, str]:
+    """Question text already recorded in a mapping file, by activity id."""
+    if not mapping.exists():
+        return {}
+    return {e['activity']: e['question'] for e in json.loads(mapping.read_text(encoding='utf-8'))
+            if e.get('activity') and e.get('question')}
+
+
 def label(entry) -> str:
     if entry.get('question'):
         return entry['question']
@@ -166,6 +174,7 @@ def main(argv=None) -> int:
         print('no activities matched', file=sys.stderr)
         return 1
 
+    mapping = args.repo / 'deck' / f'{args.week}-reports.json'
     deck = args.repo / 'deck' / f'{args.week}.py'
     if deck.exists():
         questions = deck_questions(deck)
@@ -177,10 +186,15 @@ def main(argv=None) -> int:
                   f'activities ran — leaving the questions blank. Check the date filter, and '
                   f'that nothing was launched twice.', file=sys.stderr)
     else:
-        print(f'! no {deck}, so the questions stay blank (fill them in by hand if you want '
-              f'the build to check them)', file=sys.stderr)
+        print(f'! no {deck} — a week delivered before the deck existed. Write the questions '
+              f'into {mapping.name} by hand and they will survive from here on.', file=sys.stderr)
 
-    mapping = args.repo / 'deck' / f'{args.week}-reports.json'
+    # Anything already recorded against this activity wins over a blank, so a
+    # question typed in by hand is not lost the next time this runs.
+    for e in entries:
+        if not e['question'] and e['activity']:
+            e['question'] = prior_questions(mapping).get(e['activity'])
+
     answers = args.repo / ANSWERS
     body = json.dumps(entries, indent=2, ensure_ascii=False) + '\n'
     md = splice(answers, args.week, answers_md(args.week, entries), HEADER)
