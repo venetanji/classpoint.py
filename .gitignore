@@ -6,3 +6,8 @@ __pycache__/
 *.pyc
 .venv/
 *.pptx
+
+# Responses belong wherever the roster lives, not here.
+answers*.csv
+answers*.json
+media/
