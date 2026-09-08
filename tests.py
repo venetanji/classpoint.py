@@ -11,6 +11,7 @@ import json
 import pathlib
 import sys
 import tempfile
+import urllib.error
 
 import reports
 import weekly
@@ -50,15 +51,15 @@ check('a page with no cards falls back to any id it can see',
 
 # ── response shapes ──────────────────────────────────────────────────────────
 split = reports._split_response
-check('short answer is html', split('Short Answer', '<p>Two <b>lines</b><br>here</p>') == ('Two lines\nhere', []))
-check('an entity is unescaped', split('Short Answer', '<p>it&rsquo;s &amp; more</p>')[0] == 'it’s & more')
-check('word cloud is a bare word', split('Word Cloud', 'game') == ('game', []))
-check('multiple choice is a json list', split('Multiple Choice', '["C"]') == ('C', []))
-check('a multi-select keeps both', split('Multiple Choice', '["A","C"]') == ('A, C', []))
+check('short answer is html', split('<p>Two <b>lines</b><br>here</p>') == ('Two lines\nhere', []))
+check('an entity is unescaped', split('<p>it&rsquo;s &amp; more</p>')[0] == 'it’s & more')
+check('word cloud is a bare word', split('game') == ('game', []))
+check('multiple choice is a json list', split('["C"]') == ('C', []))
+check('a multi-select keeps both', split('["A","C"]') == ('A, C', []))
 check('image upload splits url from caption',
-      split('Image Upload', json.dumps(['https://x/y.png', 'a cup'])) == ('a cup', ['https://x/y.png']))
-check('an unparseable body is kept as text', split('Slide Drawing', '[not json') == ('[not json', []))
-check('an empty response is empty, not a crash', split('Short Answer', None) == ('', []))
+      split(json.dumps(['https://x/y.png', 'a cup'])) == ('a cup', ['https://x/y.png']))
+check('an unparseable body is kept as text', split('[not json') == ('[not json', []))
+check('an empty response is empty, not a crash', split(None) == ('', []))
 
 # ── reading the deck ─────────────────────────────────────────────────────────
 DECK = '''
@@ -107,10 +108,56 @@ with tempfile.TemporaryDirectory() as d:
     m = pathlib.Path(d) / 'week01-reports.json'
     check('nothing recorded yet is not an error', weekly.prior_questions(m) == {})
     m.write_text(json.dumps([{'activity': IDS[0], 'question': 'Typed in by hand'},
-                             {'activity': None, 'question': 'Withheld, no id to key on'},
+                             {'activity': None, 'ran': '2026-01-01T02:02:02Z',
+                              'question': 'Withheld, keyed on when it ran'},
                              {'activity': IDS[1], 'question': None}]))
     check('a question typed in by hand survives the next run',
-          weekly.prior_questions(m) == {IDS[0]: 'Typed in by hand'})
+          weekly.prior_questions(m).get(IDS[0]) == 'Typed in by hand')
+    check('and so does one on a withheld activity, which has no id to key on',
+          weekly.prior_questions(m).get('2026-01-01T02:02:02Z') == 'Withheld, keyed on when it ran')
+    check('an entry with no question is not recorded as one', IDS[1] not in weekly.prior_questions(m))
+    m.write_text('{ not json')
+    check('an unreadable mapping is not a crash', weekly.prior_questions(m) == {})
+
+# ── the fallback when the RSC header stops working ───────────────────────────
+# The payload as the page actually carries it: JSON, escaped once more into a
+# JS string literal inside a flight push.
+_PAYLOAD = {'activity': {'activityId': AID, 'activityType': 'Short Answer',
+                         'activityResponses': [{'participantName': 'Ada',
+                                                'responseData': '<p>it\u2019s here</p>'}]}}
+PAGE = ('<!DOCTYPE html><script>self.__next_f.push([1,"'
+        + json.dumps(json.dumps(_PAYLOAD))[1:-1] + '"])</script>').encode()
+
+
+def _stub(fail_rsc):
+    def _get(url, headers=None, timeout=30):
+        if headers and 'RSC' in headers:
+            if fail_rsc == 'http':
+                raise urllib.error.HTTPError(url, 403, 'Forbidden', {}, None)
+            return PAGE               # header ignored: the rendered page
+        return PAGE
+    return _get
+
+
+for mode, name in (('http', 'a rejected RSC header still reaches the page fallback'),
+                   ('ignored', 'an ignored RSC header does too')):
+    real, reports._get = reports._get, _stub(mode)
+    try:
+        a = reports._fetch_payload(AID)
+        check(name, a['activityResponses'][0]['participantName'] == 'Ada')
+    except Exception as exc:
+        check(f'{name} ({type(exc).__name__}: {exc})', False)
+    finally:
+        reports._get = real
+
+real, reports._get = reports._get, lambda *a, **k: b'nothing here'
+try:
+    reports._fetch_payload(AID)
+    check('a page with no payload is an error, not a silent empty', False)
+except ValueError:
+    check('a page with no payload is an error, not a silent empty', True)
+finally:
+    reports._get = real
 
 print(f'\n{len(fails)} FAILED: {fails}' if fails else '\nall checks passed')
 sys.exit(1 if fails else 0)

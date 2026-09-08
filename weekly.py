@@ -100,11 +100,21 @@ def collect(refs, *, on=None, link_anonymous=False) -> list[dict]:
 
 
 def prior_questions(mapping: Path) -> dict[str, str]:
-    """Question text already recorded in a mapping file, by activity id."""
+    """Question text already recorded in a mapping file, by whatever identifies
+    the entry: its activity id, or — for a withheld activity, whose id is
+    deliberately not written — the time it ran, which is unique per activity and
+    already in the file. Without that second key a question typed in by hand
+    against an anonymous activity was lost on every subsequent run, which is
+    exactly the case the README tells you to fill in by hand."""
     if not mapping.exists():
         return {}
-    return {e['activity']: e['question'] for e in json.loads(mapping.read_text(encoding='utf-8'))
-            if e.get('activity') and e.get('question')}
+    try:
+        prior = json.loads(mapping.read_text(encoding='utf-8'))
+    except json.JSONDecodeError:
+        print(f'! {mapping} is not readable JSON — starting from blank questions', file=sys.stderr)
+        return {}
+    return {key: e['question'] for e in prior
+            if e.get('question') and (key := e.get('activity') or e.get('ran'))}
 
 
 def label(entry) -> str:
@@ -190,10 +200,13 @@ def main(argv=None) -> int:
               f'into {mapping.name} by hand and they will survive from here on.', file=sys.stderr)
 
     # Anything already recorded against this activity wins over a blank, so a
-    # question typed in by hand is not lost the next time this runs.
+    # question typed in by hand is not lost the next time this runs. Read once,
+    # not once per entry, and fall back to the run time for withheld activities
+    # so those keep their hand-written question too.
+    prior = prior_questions(mapping)
     for e in entries:
-        if not e['question'] and e['activity']:
-            e['question'] = prior_questions(mapping).get(e['activity'])
+        if not e['question']:
+            e['question'] = prior.get(e['activity'] or e['ran'])
 
     answers = args.repo / ANSWERS
     body = json.dumps(entries, indent=2, ensure_ascii=False) + '\n'

@@ -141,7 +141,11 @@ def _fetch_payload(aid: str, timeout: int = 30) -> dict:
     url = ACTIVITY_URL.format(aid)
     try:
         return _extract_activity(_get(url, {'RSC': '1'}, timeout).decode('utf-8', 'replace'))
-    except (ValueError, KeyError):
+    except (ValueError, KeyError, OSError):
+        # OSError covers HTTPError and URLError. A server that *rejects* the
+        # RSC header rather than ignoring it is the likelier way this stops
+        # working, and it has to reach the fallback below too. If the network
+        # itself is down, the unguarded fetch that follows re-raises and says so.
         pass
     # Fallback: the same payload, escaped inside the flight scripts of the
     # rendered page.
@@ -167,7 +171,7 @@ def strip_html(s: str) -> str:
     return re.sub(r'[ \t]+', ' ', html_mod.unescape(s)).strip()
 
 
-def _split_response(activity_type: str, data) -> tuple[str, list[str]]:
+def _split_response(data) -> tuple[str, list[str]]:
     """`responseData` -> (text, image urls). Shape depends on the type:
     Short Answer is HTML, Word Cloud a bare word, Multiple Choice a JSON list
     of letters, Image Upload a JSON `[url, caption]`."""
@@ -242,7 +246,7 @@ def fetch(ref: str, *, timeout: int = 30) -> Activity:
     atype = a.get('activityType') or id_type(aid)
     responses = []
     for r in a.get('activityResponses') or []:
-        text, images = _split_response(atype, r.get('responseData'))
+        text, images = _split_response(r.get('responseData'))
         responses.append(Response(
             name=r.get('participantName') or '',
             text=text,
