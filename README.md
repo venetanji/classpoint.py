@@ -4,7 +4,9 @@ Put working **[ClassPoint](https://www.classpoint.io/) activity buttons into a `
 Python** — Word Cloud, Short Answer, Multiple Choice — so a generated deck arrives with its
 interactive questions already live, instead of you clicking through the add-in ribbon afterwards.
 
-Not affiliated with Inknoe. Written by reading the file format.
+And read the answers back out afterwards, so a class's activities can be linked from the
+slides they were asked on. Not affiliated with Inknoe. Written by reading the file format,
+and the wire.
 
 ```python
 import classpoint as cp
@@ -66,6 +68,106 @@ PowerPoint once, save, and `verify()` will read its JSON straight back out for y
 A malformed tag looks fine on disk, opens without error, and simply does nothing when you click
 it — in front of a room. `verify()` reads the activities back out of the saved file and reports
 which slide each is bound to.
+
+## Reading the answers back — `reports.py`
+
+The other direction: after the class, pull out what the room actually submitted.
+
+```bash
+python3 reports.py sa20260904033646383JAAW              # one activity, to stdout
+python3 reports.py --from-html activities.html \
+        --csv answers.csv --json answers.json --media media/
+```
+
+Stdlib only — `reports.py` needs no `python-pptx` and no network library.
+
+Every activity has a **public** page at `app.classpoint.io/activity/<activityId>`. The
+reports dashboard it is linked from needs a login; the activity page does not, and it is
+server-rendered, so all of the responses arrive in the first response — no pagination, no
+session, no token. Sending `RSC: 1` returns just the React Server Component payload
+(~36 KB rather than ~140 KB of markup); if that header ever stops being honoured, the same
+JSON is unescaped out of the page's flight scripts instead.
+
+`/cp/reports/activities` **is** behind the login, so there is no way to enumerate. Save
+that page — devtools, copy the cards element — and `--from-html` scrapes the `aId=` links
+out of it. Ids are self-describing, so filtering costs no requests: the two-letter prefix
+is the type (`sa` `mc` `wc` `iu`, and `sd` `fb` `vu` `ar` unconfirmed) and the next 17
+digits are the UTC timestamp. Hence `--type sa --since 2026-09-04`.
+
+| Type | `responseData` | normalised to |
+|---|---|---|
+| Short Answer | `<p>…</p>` html | `text` |
+| Word Cloud | bare word | `text` |
+| Multiple Choice | `["C"]` | `text` |
+| Image Upload | `[url, caption]` | `images` + `text` |
+
+`Response.raw` keeps the original regardless. Slide Drawing, Fill in the Blanks, Video
+Upload and Audio Record have not been seen — they take a generic path that will get text
+out but may not recognise their media.
+
+**The question is not in the payload.** Only `activitySlideSavedUrl`, a JPG of the slide it
+was asked on; `--media` downloads it alongside any uploaded images. If your slides carry a
+running footer, that picture is also the only thing that tells you which deck and week the
+activity came from.
+
+## The weekly routine — `weekly.py`
+
+Puts the links back into the deck, so a student can find their own work weeks later.
+
+```bash
+python3 weekly.py --repo ~/dev/sd0000-teaching --week week01 \
+        --on 2026-09-04 --from-html ~/Downloads/activities.html
+```
+
+Writes two files into the course repo and nothing else:
+
+- **`deck/week01-reports.json`** — the mapping [`deckgen`](https://github.com/ait4x/deckgen)'s
+  `attach_reports()` reads, which turns the eyebrow of each question slide into a link to
+  that question's answers.
+- **`ANSWERS.md`** — the same links, one per line, for anyone not opening the slides.
+
+Then `deckgen build`, commit both, open a PR. Both files are rewritten in place, so running
+it twice is the same as running it once.
+
+Three things make it safe to run unattended:
+
+- **Order is the contract.** ClassPoint mints an activity id the first time the activity
+  runs, so one class's activities sort chronologically into exactly the order their slides
+  appear in. Nothing needs slide numbers, and re-cutting a deck around its questions does
+  not break the mapping.
+- **The deck is parsed, not guessed.** `ast` walks `deck/week01.py` for `question(…)` calls
+  and anything carrying a `cp=`, in source order, and writes each question's text into the
+  mapping. deckgen checks that text again at build time, so a question rewritten later
+  fails the build instead of quietly pointing students at the wrong answers.
+- **Anonymous activities are withheld.** See below.
+
+For a week delivered before its deck existed there is nothing to parse, so the questions
+stay blank — write them into `deck/weekNN-reports.json` by hand once and they survive every
+run after that.
+
+## ⚠️ Public means public
+
+Anyone with an activity id can read every response on it, *and* the participant names. Two
+consequences worth being deliberate about:
+
+- Treat an activity id like the responses themselves. An exported `answers.csv` belongs
+  wherever your roster lives, not in git.
+- **`isNamesHidden` is not enforced in the payload.** ClassPoint's rendered page honours it,
+  but the JSON behind that page still carries `participantName` for every response. An
+  activity the room was told was anonymous can be de-anonymised by anyone who fetches it, so
+  `weekly.py` records those with a null id and publishes no link. `--link-anonymous`
+  overrides that, and you should have a reason.
+
+## Tests
+
+```bash
+python3 tests.py        # everything offline: ids, dashboard scraping, response shapes,
+                        # reading a deck, and what gets written
+```
+
+The network half — that `app.classpoint.io` still returns what `reports.py` expects — is
+not faked, because a fake would only ever confirm itself. Run `python3 reports.py <id>`
+against a real activity when the site changes under you.
 
 ## Caveats
 
