@@ -143,8 +143,8 @@ def splice(path: Path, week: str, section: str, header: str) -> str:
 HEADER = """# Answers
 
 Every ClassPoint activity this course has run, one link per line. The pages are public —
-no login — and each one shows what the room submitted. The same links are on the question
-slides themselves.
+no login — and each one shows what the room submitted. Where the week has a deck in this
+repo, the same links are on its question slides.
 
 Written by [classpoint.py](https://github.com/venetanji/classpoint.py)'s `weekly.py`.
 """
