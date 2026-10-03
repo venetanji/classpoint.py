@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deckgen / ClassPoint presenter</title>
+  <link rel="stylesheet" href="/assets/presenter.css">
+  <script src="/assets/presenter.js" defer></script>
+</head>
+<body>
+  <header class="toolbar">
+    <a class="brand" href="/" aria-label="Deckgen ClassPoint presenter home">deckgen<span> / ClassPoint</span></a>
+    <div class="connection" role="status"><span class="status-dot" id="status-dot"></span><span id="connection-label">Loading local presenter...</span></div>
+    <button class="quiet" id="fullscreen" type="button" disabled>Present full screen</button>
+  </header>
+
+  <main>
+    <section class="presentation" aria-label="HTML presentation">
+      <div class="stage" id="stage">
+        <iframe id="deck" title="Deckgen HTML slides" allow="fullscreen" tabindex="0"></iframe>
+        <div class="stage-code" id="stage-code" hidden>Join at classpoint.app <strong id="projected-code"></strong></div>
+      </div>
+      <nav class="navigation" aria-label="Slide navigation">
+        <button class="quiet arrow" id="previous" type="button" aria-label="Previous slide" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>
+        </button>
+        <span class="slide-position" id="slide-position">Loading slides</span>
+        <button class="quiet arrow" id="next" type="button" aria-label="Next slide" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg>
+        </button>
+        <span class="slide-title" id="slide-title"></span>
+        <span class="sync-status" id="sync-status" role="status"></span>
+      </nav>
+    </section>
+
+    <aside class="session" aria-labelledby="session-heading">
+      <div class="session-heading">
+        <h1 id="session-heading">Present in HTML.</h1>
+        <p>Your deckgen slides. ClassPoint's student app. No PowerPoint.</p>
+      </div>
+
+      <div class="join">
+        <div class="join-heading"><span>Students join at <a href="https://www.classpoint.app/" target="_blank" rel="noopener">classpoint.app</a></span><button class="quiet" id="copy-code" type="button" hidden>Copy code</button></div>
+        <strong class="join-code" id="join-code">No class started</strong>
+        <p id="join-note">Close PowerPoint, then start the class from here. This uses the instructor profile from your own capture.</p>
+      </div>
+
+      <div class="commands">
+        <button class="primary" id="start" type="button" disabled>Start class + question</button>
+        <div class="secondary-commands">
+          <button class="quiet" id="close" type="button" disabled>Close submissions</button>
+          <button class="quiet danger" id="end" type="button" disabled>End class</button>
+        </div>
+        <p class="activity-note" id="activity-note">Navigate to a multiple-choice slide to open an activity.</p>
+      </div>
+
+      <p class="error" id="error" role="alert" hidden></p>
+
+      <section class="results" aria-labelledby="results-heading">
+        <div class="results-heading"><h2 id="results-heading">Live responses</h2><span id="response-count">No responses yet</span></div>
+        <p id="participant-count">No students connected</p>
+        <div id="votes" class="votes"></div>
+      </section>
+    </aside>
+
+    <details class="diagnostics">
+      <summary>Connection log <span id="region"></span></summary>
+      <ol id="log"><li>Loading your local capture profile. No remote connection yet.</li></ol>
+      <p>Unofficial protocol proof of concept. Account details and upload signatures stay in the local bridge.</p>
+    </details>
+  </main>
+</body>
+</html>
