@@ -1,0 +1,11 @@
+@font-face { font-family: Inter; src: url('/deck/vendor/fonts/Inter-Variable.ttf') format('truetype'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/deck/vendor/fonts/JetBrainsMono-Variable.ttf') format('truetype'); font-weight: 100 900; font-display: swap; }
+:root { --ink: #000b1c; --white: #fff; --teal: #64c2c3; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ink); color: var(--white); font: 400 14px/1.5 Inter, sans-serif; overflow: hidden; }
+::selection { background: var(--teal); color: var(--ink); }
+iframe { display: block; width: 100vw; height: 100vh; border: 0; pointer-events: none; }
+#join { position: fixed; top: 20px; right: 24px; padding: 10px 18px; background: var(--ink); color: var(--white); font-size: 12px; }
+#join strong { display: block; font: 600 30px/1.2 'JetBrains Mono', monospace; letter-spacing: .04em; }
+#notice { position: fixed; left: 24px; bottom: 24px; padding: 12px 18px; max-width: calc(100vw - 48px); background: var(--ink); color: var(--white); }
+[hidden] { display: none !important; }

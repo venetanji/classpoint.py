@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.pcap
+*.pcapng
+*.log
+.env
+.env.*
+*tls*keys*
+*profile*.json
+*.har
+output/

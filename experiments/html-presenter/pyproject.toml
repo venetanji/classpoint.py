@@ -1,0 +1,10 @@
+[project]
+name = "classpoint-html-poc"
+version = "0.1.0"
+description = "A local, PowerPoint-free ClassPoint presenter proof of concept"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.13,<4",
+    "playwright>=1.55,<2",
+    "deckgen @ git+https://github.com/ait4x/deckgen@9990546c01865807e6aaac5aaa50977b4b6b916a",
+]
