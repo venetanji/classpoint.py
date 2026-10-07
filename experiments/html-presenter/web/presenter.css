@@ -63,7 +63,7 @@ h1 { font-size: 30px; line-height: 1.08; font-weight: 850; letter-spacing: -.035
 .secondary-commands { display: flex; justify-content: space-between; margin: 6px -12px 8px; }
 .secondary-commands .quiet { font-size: 12px; padding: 12px; }
 .danger { color: var(--danger); }
-.error { padding: 14px 0; color: var(--danger); font-size: 12px; line-height: 1.6; border-top: 1px solid var(--danger); margin: 20px 0 0; overflow-wrap: anywhere; }
+#error { padding: 14px 0; color: var(--danger); font-size: 12px; line-height: 1.6; border-top: 1px solid var(--danger); margin: 20px 0 0; overflow-wrap: anywhere; }
 .results { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); }
 .results-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 h2 { font-size: 16px; font-weight: 750; letter-spacing: -.02em; margin: 0; }

@@ -12,6 +12,15 @@ The current code is preserved in `experiments/html-presenter/`. It is deliberate
 not wired into existing `classpoint.py`, reports, or deckgen commands yet. This
 draft is a development handoff; retain the working baseline while extracting it.
 
+The preserved baseline includes a separate read-only audience window, local
+slide/fragment/pause synchronization with audience reload recovery, and an
+optional check that ClassPoint returns the configured join code before opening
+an activity. Synthetic protocol and browser validation covers these additions.
+The reusable client extraction and packaged deckgen command remain follow-up
+work. Deckgen's shared window-lifecycle and deck-selection helper is available
+through [deckgen PR #12](https://github.com/ait4x/deckgen/pull/12); the POC server
+itself still requires explicit **End class** before stopping.
+
 ## Ownership and Dependency Direction
 
 ```text

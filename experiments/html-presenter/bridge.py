@@ -64,6 +64,7 @@ class Bridge:
             "can_end": self.class_started,
             "active_slide": self.active_slide,
             "activity_choices": list(self.activity_choices),
+            "expected_class_code": self.profile.class_options.get("classCode"),
         }
 
     async def connect(self) -> None:
@@ -248,6 +249,9 @@ class Bridge:
                     self.profile.class_options,
                 )
                 await asyncio.wait_for(self.class_ready.wait(), timeout=10)
+                expected = self.profile.class_options.get("classCode")
+                if expected and str(self.class_code).casefold() != expected.casefold():
+                    raise RuntimeError("ClassPoint returned a different join code. End this session and check the configured class code.")
                 self.log("Class started. Students can join with the displayed code.")
                 image_url = await self.upload_slide(image, self.active_activity)
                 self.slide_message = {

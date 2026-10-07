@@ -34,6 +34,7 @@ class MockClassPoint:
         self.reject = None
         self.fail_close = False
         self.activity = None
+        self.code_override = None
 
     async def event(self, target, value):
         await self.socket.send_str(json.dumps({"type": 1, "target": target, "arguments": [value]}) + "\x1e")
@@ -63,7 +64,8 @@ class MockClassPoint:
                 elif target == "PresenterStartSlideshow":
                     assert len(message["arguments"]) == 3
                     await self.event("ClassSessionUpdated", {
-                        "classCode": "MOCK01", "participantList": [], "cpcsRegion": "cpcs-11",
+                        "classCode": self.code_override or message["arguments"][2].get("classCode") or "MOCK01",
+                        "participantList": [], "cpcsRegion": "cpcs-11",
                     })
                 elif target == "PresenterStartActivity":
                     dto = message["arguments"][0]
@@ -105,6 +107,84 @@ async def eventually(check):
             return
         await asyncio.sleep(0.05)
     raise AssertionError("Expected local mock state did not arrive")
+
+
+async def check_audience(browser, profile, directory, output):
+    course = directory / "audience-course"
+    (course / "deck").mkdir(parents=True)
+    (course / "deckgen.toml").write_text('[course]\ncode="TEST"\nname="Audience fixture"\ndecks=["week01"]\n')
+    (course / "deck/week01.py").write_text(
+        'from deckgen.layouts import question, content, finalize\n'
+        'DECK={"title":"Audience fixture","console":False,"slides":finalize(['
+        'question("multiple_choice","Question",choices=["One","Two","Three","Four"]),'
+        'content("DETAIL","Second slide",["First step","Second step"])],"TEST")}\n'
+    )
+    deck = render_deck(directory / "audience-site", course, "week01")
+    # Keep the fixture fragment in the served HTML so audience reloads retain it.
+    html_path = deck.site / "week01/index.html"
+    first_slide, separator, remaining = html_path.read_text(encoding="utf-8").partition("</section>")
+    assert separator and "</section>" in remaining
+    html_path.write_text(first_slide + separator + remaining.replace(
+        "</section>", '<span class="fragment">Fixture step</span></section>', 1,
+    ), encoding="utf-8")
+    port = free_port()
+    runner, url = await serve(create_app(profile, deck, port), port)
+    context = await browser.new_context(viewport={"width": 1440, "height": 900})
+    try:
+        external = []
+
+        async def local_requests_only(route):
+            if not route.request.url.startswith((url, profile.mock_url, "data:", "about:")):
+                external.append(route.request.url)
+                await route.abort()
+            else:
+                await route.continue_()
+
+        await context.route("**/*", local_requests_only)
+        page = await context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        await page.goto(url)
+        await page.wait_for_function("!document.querySelector('#start').disabled")
+        assert await page.locator("#audience").count() == 1, "The separate audience window control is missing"
+        async with page.expect_popup() as popup:
+            await page.locator("#audience").click()
+        audience = await popup.value
+        audience.on("pageerror", lambda error: errors.append(str(error)))
+        await audience.wait_for_function("document.querySelector('#deck').contentWindow.Reveal?.isReady()")
+        await page.locator("#deck").evaluate("el => el.contentWindow.Reveal.slide(1)")
+        await audience.wait_for_function("document.querySelector('#deck').contentWindow.Reveal.getIndices().h === 1")
+        await page.locator("#deck").evaluate("el => el.contentWindow.Reveal.nextFragment()")
+        await audience.wait_for_function("document.querySelector('#deck').contentWindow.Reveal.getIndices().f === 0")
+        await page.locator("#deck").evaluate("el => el.contentWindow.Reveal.togglePause(true)")
+        await audience.wait_for_function("document.querySelector('#deck').contentWindow.Reveal.isPaused()")
+        await page.locator("#deck").evaluate("el => el.contentWindow.Reveal.togglePause(false)")
+        await page.locator("#deck").evaluate("el => el.contentWindow.Reveal.slide(0)")
+        await page.locator("#start").click()
+        await page.wait_for_function("!document.querySelector('#end').disabled")
+        await audience.wait_for_function("document.querySelector('#join-code').textContent === 'MOCK01'")
+        assert not await audience.locator("#join").is_hidden()
+        assert await audience.locator("#start,#close,#end,#votes").count() == 0
+        await audience.screenshot(path=str(output / "audience-live.png"))
+        await page.locator("#deck").evaluate("el => { el.contentWindow.Reveal.slide(1, 0, 0); el.contentWindow.Reveal.togglePause(true); }")
+        await audience.reload()
+        await audience.wait_for_function("document.querySelector('#join-code').textContent === 'MOCK01'")
+        await audience.wait_for_function("""() => {
+            const reveal = document.querySelector('#deck').contentWindow.Reveal;
+            const indices = reveal.getIndices();
+            return indices.h === 1 && indices.f === 0 && reveal.isPaused();
+        }""")
+        assert await audience.locator("#deck").evaluate("el => !el.contentWindow.Reveal.getConfig().keyboard && !el.contentWindow.Reveal.getConfig().touch")
+        await audience.keyboard.press("ArrowRight")
+        assert await audience.locator("#deck").evaluate("el => el.contentWindow.Reveal.getIndices().h === 1 && el.contentWindow.Reveal.getIndices().f === 0")
+        await page.locator("#end").click()
+        await audience.wait_for_function("document.querySelector('#join').hidden")
+        assert not errors, errors
+        assert not external, "Generated audience fixture unexpectedly requested external assets"
+        print("PASS: read-only audience follows slides, fragments and pause, shows the actual join code, and restores state after reload")
+    finally:
+        await context.close()
+        await runner.cleanup()
 
 
 async def main():
@@ -172,6 +252,24 @@ async def main():
                 await eventually(lambda: bridge.socket.closed)
                 assert bridge.phase == "error" and bridge.class_started
                 await bridge.end()
+                profile.class_options["classCode"] = "FIXED01"
+                await bridge.start(config, fake_snapshot)
+                assert bridge.state()["class_code"] == "FIXED01"
+                await bridge.end()
+                mock.code_override = "OTHER01"
+                before = len(mock.commands)
+                uploads_before = len(mock.uploads)
+                try:
+                    await bridge.start(config, fake_snapshot)
+                    raise AssertionError("A different join code incorrectly opened the class question")
+                except RuntimeError as error:
+                    assert "join code" in str(error)
+                    assert not bridge.class_started and bridge.class_code is None
+                    assert not any(item["target"] == "PresenterStartActivity" for item in mock.commands[before:])
+                    assert len(mock.uploads) == uploads_before
+                mock.code_override = None
+                profile.class_options["classCode"] = None
+                print("PASS: configured join code, mismatch detection and cleanup before opening a question")
                 print("PASS: mock SignalR lifecycle, answers, rejection, cleanup, retry, and privacy")
             finally:
                 await bridge.disconnect()
@@ -265,6 +363,7 @@ async def main():
                         assert not errors, errors
                         assert not external, "Generated demo unexpectedly requested external assets"
                         print("PASS: desktop/mobile, click and keyboard badges, tallies, error recovery, no page errors")
+                        await check_audience(browser, profile, directory, output)
                     finally:
                         await browser.close()
             finally:

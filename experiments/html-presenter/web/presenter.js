@@ -1,7 +1,7 @@
 "use strict";
 
 const elements = Object.fromEntries([
-  "deck", "stage", "start", "close", "end", "fullscreen", "previous", "next",
+  "deck", "stage", "start", "close", "end", "fullscreen", "audience", "previous", "next",
   "slide-position", "slide-title", "connection-label", "status-dot", "join-code",
   "join-note", "copy-code", "stage-code", "projected-code", "activity-note", "error",
   "response-count", "participant-count", "votes", "log", "region", "sync-status",
@@ -17,6 +17,23 @@ let queuedSync = null;
 let syncTimer;
 let polling = false;
 let lastLog = "";
+const audienceChannel = new BroadcastChannel("deckgen-audience");
+
+function broadcastAudience() {
+  if (!boot || !state || !reveal?.isReady()) return;
+  const current = reveal.getState();
+  audienceChannel.postMessage({
+    type: "slide", title: boot.title, deck_url: boot.deck_url,
+    reveal: { indexh: current.indexh, indexv: current.indexv, indexf: current.indexf, paused: current.paused },
+    class_code: state.class_code,
+  });
+}
+
+audienceChannel.addEventListener("message", event => {
+  if (event.data?.type === "ready") broadcastAudience();
+});
+setInterval(broadcastAudience, 1000);
+window.addEventListener("beforeunload", () => audienceChannel.postMessage({ type: "disconnected" }));
 
 function selection() {
   const indices = reveal.getIndices();
@@ -50,6 +67,7 @@ function render() {
   elements["stage-code"].hidden = !state.class_code;
   elements["join-note"].textContent = state.class_code
     ? "Students use the existing ClassPoint app. This browser is the presenter."
+    : state.expected_class_code ? `Start the ${state.expected_class_code} class from here. Close PowerPoint first.`
     : "Close PowerPoint, then start the class from here. This uses the instructor profile from your own capture.";
   elements.start.disabled = !canOpenQuestion();
   elements.start.textContent = working ? "Working..." : !state.can_end ? state.phase === "error" ? "Retry class + question" : "Start class + question" : state.phase === "open" && sameActivity ? "Question open" : "Open this question";
@@ -58,6 +76,7 @@ function render() {
   elements.previous.disabled = !reveal || working || reveal.isFirstSlide();
   elements.next.disabled = !reveal || working || reveal.isLastSlide();
   elements.fullscreen.disabled = !reveal;
+  elements.audience.disabled = !reveal;
   elements["slide-position"].textContent = `${selected.slide_index + 1} / ${boot.slides.length}`;
   elements["slide-title"].textContent = slide?.title || "";
   elements["activity-note"].textContent = multipleChoice
@@ -112,6 +131,7 @@ function render() {
       return item;
     }));
   }
+  broadcastAudience();
 }
 
 async function send(action, body = {}) {
@@ -241,6 +261,13 @@ elements.end.addEventListener("click", () => {
 });
 elements.previous.addEventListener("click", () => reveal?.prev());
 elements.next.addEventListener("click", () => reveal?.next());
+elements.audience.addEventListener("click", () => {
+  const audience = window.open("/assets/audience.html", "deckgen-audience", "popup,width=1280,height=720");
+  if (!audience) {
+    localError = "Allow popups for the local presenter, then open the audience screen again.";
+    render();
+  }
+});
 elements.fullscreen.addEventListener("click", async () => {
   try {
     await elements.stage.requestFullscreen();

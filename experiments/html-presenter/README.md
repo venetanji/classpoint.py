@@ -33,11 +33,13 @@ does not establish a supported third-party authentication/authorization contract
 
 ## Verification
 
-Local validation covers the decrypted capture profile, deckgen demo and course
+Local validation uses synthetic presenter profiles and covers deckgen demo and course
 loading, real 1920x1080 Reveal screenshots, request guards, and the full
 SignalR/upload lifecycle against a local mock server. Browser checks cover desktop
 and mobile layouts, activity badge click/keyboard access, answer tallies, class
-shutdown, and retry after rejection. No live ClassPoint class is started by these checks.
+shutdown, and retry after rejection. It also verifies configured join-code checks
+and the audience window's slide, fragment, pause and reload behavior.
+No live ClassPoint class is started by these checks.
 
 ### Cloud-safe validation
 
@@ -123,6 +125,29 @@ to end the previous activity and start the new one in the same class. Slide chan
 are debounced and synchronized to the student viewer while the class is active.
 The existing `[data-classpoint]` badge is made keyboard/click actionable in the local
 presenter only; published decks and report links are not modified.
+
+## Audience Screen
+
+Click **Open audience screen** to open a separate read-only window for the
+projector. Keep the operator controls and response tallies on the laptop. The
+audience follows the operator's current Reveal slide, fragments and pause state
+over a local BroadcastChannel, and displays the join code returned by ClassPoint.
+Press **F** in the audience window for fullscreen and Escape to exit.
+
+Reloading the audience requests the current state from the operator. This is
+local window recovery, not remote ClassPoint reconnection. If the operator goes
+away, the audience displays a disconnected notice until it returns. Closing only
+the audience window does not end the class. Use **End class** before stopping the
+POC server.
+
+## Configured Join Codes
+
+Integrations can set `Profile.class_options["classCode"]` to request and verify a
+selected join code. If ClassPoint returns a different code, startup fails before
+uploading the slide or opening the question and attempts to end the incomplete
+class. If cleanup cannot be confirmed, **End class** remains available for retry.
+The UI always displays the returned code; it never substitutes the requested
+value. Without an expected code, startup accepts and displays the returned code.
 
 ## Boundaries and Privacy
 
