@@ -11,15 +11,18 @@ from typing import Awaitable, Callable
 import aiohttp
 
 from capture import Profile
+from activities import TYPES, activity_options, start_message, normalize_response, preview_url, MEDIA_ORIGIN
 
+
+MAX_RESPONSES = 512
 
 ORIGIN = "https://presenter.classpoint.app"
 
 
-def activity_id() -> str:
+def activity_id(kind="multiple_choice") -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")[:-3]
     suffix = "".join(secrets.choice(string.ascii_uppercase) for _index in range(4))
-    return f"mc{stamp}{suffix}"
+    return f"{TYPES[kind][0]}{stamp}{suffix}"
 
 
 class Bridge:
@@ -36,10 +39,12 @@ class Bridge:
         self.resync_tasks = set()
         self.participants = {}
         self.responses = {}
+        self.responses_limited = False
         self.slide_message = None
         self.active_activity = None
         self.active_slide = None
         self.activity_choices = []
+        self.activity_type = "multiple_choice"
         self.class_started = False
         self.activity_started = False
         self.disconnecting = False
@@ -56,7 +61,10 @@ class Bridge:
             "phase": self.phase,
             "class_code": self.class_code,
             "participants": len(self.participants),
-            "responses": [list(value) for value in self.responses.values()],
+            "responses": [value.copy() for value in self.responses.values()],
+            "activity_type": self.activity_type,
+            "responses_limited": self.responses_limited,
+            "media_origin": MEDIA_ORIGIN,
             "error": self.error,
             "log": list(self.entries),
             "region": self.profile.region,
@@ -188,16 +196,18 @@ class Bridge:
             for response in responses:
                 if not isinstance(response, dict) or response.get("activityId") != self.active_activity:
                     continue
-                answer = response.get("responseData", [])
-                if isinstance(answer, str):
-                    try:
-                        answer = json.loads(answer)
-                    except ValueError:
-                        continue
-                if isinstance(answer, list) and response.get("responseId"):
-                    self.responses[response["responseId"]] = [
-                        choice for choice in self.activity_choices if choice in answer
-                    ]
+                identifier = response.get("responseId")
+                if not isinstance(identifier, str) or not identifier or len(identifier) > 256:
+                    continue
+                answer = normalize_response(self.activity_type, response.get("responseData"), self.activity_choices)
+                if answer is not None:
+                    if self.activity_type == "image_upload":
+                        answer["image_url"] = preview_url(answer["image_url"])
+                    if identifier in self.responses or len(self.responses) < MAX_RESPONSES:
+                        self.responses[identifier] = answer
+                    elif not self.responses_limited:
+                        self.responses_limited = True
+                        self.log("Local response limit reached; some new submissions are not displayed.")
 
     async def resync_slide(self) -> None:
         try:
@@ -223,6 +233,7 @@ class Bridge:
         return image_url
 
     async def start(self, config: dict, snapshot: Callable[[], Awaitable[bytes]]) -> dict:
+        config = {**config, **activity_options(config)}
         async with self.lock:
             if self.class_started or self.phase == "starting":
                 raise RuntimeError("End the current class before starting another one.")
@@ -233,9 +244,11 @@ class Bridge:
             self.class_ready.clear()
             self.participants.clear()
             self.responses.clear()
+            self.responses_limited = False
             self.entries.clear()
             self.slide_message = None
-            self.active_activity = activity_id()
+            self.activity_type = config["type"]
+            self.active_activity = activity_id(self.activity_type)
             self.activity_choices = list(config["choices"])
             self.active_slide = config["slide_index"]
             self.log("Rendering the HTML slide. No PowerPoint involved.")
@@ -264,21 +277,12 @@ class Bridge:
                 }
                 await self.invoke("PresenterGotoStep", self.slide_message)
                 self.log("Sent the current HTML slide to ClassPoint's student viewer.")
-                await self.invoke("PresenterStartActivity", {
-                    "email": self.profile.presenter["email"],
-                    "activityId": self.active_activity,
-                    "activityType": "Multiple Choice",
-                    "activitySlideUrl": image_url,
-                    "activityStartTime": int(datetime.now(timezone.utc).timestamp() * 1000),
-                    "countdown": 0,
-                    "mcChoices": self.activity_choices,
-                    "mcIsAllowSelectMultiple": config.get("select_multiple", False),
-                    "mcCorrectAnswers": [],
-                    "isQuizMode": False,
-                })
+                await self.invoke("PresenterStartActivity", start_message(
+                    config, self.profile.presenter["email"], self.active_activity, image_url,
+                ))
                 self.activity_started = True
                 self.phase = "open"
-                self.log("Multiple choice is open in the existing ClassPoint student app.")
+                self.log("Activity is open in the existing ClassPoint student app.")
                 return self.state()
             except Exception:
                 self.phase = "error"
@@ -296,6 +300,7 @@ class Bridge:
                 raise
 
     async def open_activity(self, config: dict, snapshot: Callable[[], Awaitable[bytes]]) -> dict:
+        config = {**config, **activity_options(config)}
         async with self.lock:
             if not self.class_started or self.phase not in {"open", "closed"}:
                 raise RuntimeError("Start the class first, or end the failed session before restarting.")
@@ -308,25 +313,18 @@ class Bridge:
                     await self.invoke("PresenterEndActivity", {"email": self.profile.presenter["email"]})
                     self.activity_started = False
                 self.responses.clear()
-                self.active_activity = activity_id()
+                self.responses_limited = False
+                self.activity_type = config["type"]
+                self.active_activity = activity_id(self.activity_type)
                 self.active_slide = config["slide_index"]
                 self.activity_choices = list(config["choices"])
                 await self.send_slide(config, snapshot)
-                await self.invoke("PresenterStartActivity", {
-                    "email": self.profile.presenter["email"],
-                    "activityId": self.active_activity,
-                    "activityType": "Multiple Choice",
-                    "activitySlideUrl": self.slide_message["imageUrl"],
-                    "activityStartTime": int(datetime.now(timezone.utc).timestamp() * 1000),
-                    "countdown": 0,
-                    "mcChoices": self.activity_choices,
-                    "mcIsAllowSelectMultiple": config.get("select_multiple", False),
-                    "mcCorrectAnswers": [],
-                    "isQuizMode": False,
-                })
+                await self.invoke("PresenterStartActivity", start_message(
+                    config, self.profile.presenter["email"], self.active_activity, self.slide_message["imageUrl"],
+                ))
                 self.activity_started = True
                 self.phase = "open"
-                self.log("Opened this slide's multiple-choice activity.")
+                self.log("Opened this slide's activity.")
                 return self.state()
             except Exception:
                 self.phase = "error"
@@ -356,7 +354,7 @@ class Bridge:
     async def close_submissions(self) -> dict:
         async with self.lock:
             if self.phase != "open":
-                raise RuntimeError("There is no open multiple-choice activity.")
+                raise RuntimeError("There is no open activity.")
             await self.invoke("PresenterCloseSubmission", {"email": self.profile.presenter["email"]})
             self.phase = "closed"
             self.log("Submissions closed. Responses remain visible here.")

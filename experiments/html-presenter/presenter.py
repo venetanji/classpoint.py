@@ -14,6 +14,7 @@ from playwright.async_api import Error as BrowserError
 from playwright.async_api import async_playwright
 
 from bridge import Bridge
+from activities import MEDIA_ORIGIN
 from capture import Profile, load_profile
 from deck import Deck, render_deck
 
@@ -97,6 +98,8 @@ async def local_only(request: web.Request, handler):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "no-referrer"
+    if request.path == "/":
+        response.headers["Content-Security-Policy"] = f"img-src 'self' {MEDIA_ORIGIN}; object-src 'none'; base-uri 'self'"
     return response
 
 
@@ -184,7 +187,7 @@ def create_app(profile: Profile, deck: Deck, port: int = 8765) -> web.Applicatio
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Present a deckgen HTML deck with live ClassPoint multiple choice, without PowerPoint.")
+    parser = argparse.ArgumentParser(description="Present a deckgen HTML deck with live ClassPoint multiple choice, image upload and short answer, without PowerPoint.")
     captures = sorted(ROOT.glob("*.pcapng"), key=lambda path: path.stat().st_mtime, reverse=True)
     parser.add_argument("--capture", type=Path, default=captures[0] if captures else None)
     parser.add_argument("--key-log", type=Path, default=Path(tempfile.gettempdir()) / "classpoint-tls-keys.log")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass
+from activities import TYPES, activity_options
 from pathlib import Path
 
 import deckgen
@@ -25,22 +26,16 @@ class Deck:
         if isinstance(fragment, bool) or not isinstance(fragment, int) or not -1 <= fragment <= 100:
             raise ValueError("Invalid slide fragment index.")
         activity = self.slides[index]["activity"] or {}
-        if require_activity and activity.get("type") != "multiple_choice":
-            raise ValueError("This POC only opens multiple-choice activities. Navigate to a multiple-choice slide.")
-        choices = activity.get("choices", [])
-        if require_activity and (
-            not isinstance(choices, list) or not 2 <= len(choices) <= 6
-            or any(not isinstance(choice, str) or not choice or len(choice) > 160 for choice in choices)
-            or len(set(choices)) != len(choices)
-        ):
-            raise ValueError("The slide needs 2 to 6 distinct ClassPoint choices.")
+        if require_activity and not activity:
+            raise ValueError("This slide has no live activity.")
+        options = activity_options(activity) if require_activity else {}
         return {
+            **options,
             "slide_index": index,
             "fragment_index": fragment,
             "total_slides": len(self.slides),
-            "choices": choices,
-            "select_multiple": bool(activity.get("select_multiple", False)),
         }
+
 
 
 def render_deck(output: Path, project_path: Path | None = None, name: str | None = None) -> Deck:
@@ -68,5 +63,5 @@ def render_deck(output: Path, project_path: Path | None = None, name: str | None
     ]
     if not slides:
         raise ValueError("The deck is empty.")
-    initial = next((index for index, slide in enumerate(slides) if (slide["activity"] or {}).get("type") == "multiple_choice"), 0)
+    initial = next((index for index, slide in enumerate(slides) if (slide["activity"] or {}).get("type") in TYPES), 0)
     return Deck(output, f"/deck/{name}/index.html", definition["title"], slides, initial)

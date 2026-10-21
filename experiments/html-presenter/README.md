@@ -169,12 +169,15 @@ value. Without an expected code, startup accepts and displays the returned code.
 
 ## Current Limits
 
-Only multiple choice is wired. Stars, quiz grading, countdowns, report persistence,
+Multiple choice, single image upload and short answer are implemented experimentally.
+Image/text is source-backed and mock-tested, but still needs instructor live acceptance.
+See [status and acceptance](../../docs/live-image-upload-handoff.md).
+Stars, quiz grading, countdowns, report persistence,
 and automatic reconnect are not implemented. A fresh screenshot captures the
 specified slide/fragment in a headless browser, not live DOM edits or the current
 state of an interactive sketch/video in the presenting browser. Those require a
-future in-browser snapshot/state-transfer path. This proves the static HTML-slide
-and multiple-choice workflow first.
+future in-browser snapshot/state-transfer path. The static HTML-slide and MC
+workflow has prior instructor live validation; image/text still need that check.
 
 Always end the class with the button before stopping the server. Graceful shutdown
 also attempts to end it, but a disconnected server or forced termination cannot
