@@ -1,13 +1,16 @@
 # Deckgen / ClassPoint HTML Presenter POC
 
 Present a real **deckgen HTML deck**, start your ClassPoint class, send the current
-slide, and open multiple choice. Students still join and submit in ClassPoint's
+slide, and open multiple choice, single image upload or short answer. Students still join and submit in ClassPoint's
 existing student app. PowerPoint is not required.
 
 This is an unofficial protocol experiment, not an Inknoe-supported integration.
 The POC imports the instructor identity and signed upload configuration from your
 own decrypted test capture. The instructor confirmed that the POC worked in a
-live test on 2026-10-04. It does not implement login or establish that the
+multiple-choice live test on 2026-10-04. Image/text support has passed synthetic
+protocol and browser tests, but still requires the separate
+[instructor-run live acceptance](../../docs/live-image-upload-handoff.md#required-instructor-run-live-acceptance).
+It does not implement login or establish that the
 server accepts every independently created presenter session.
 
 This directory preserves the working POC for a cloud-session handoff. It is not
@@ -119,8 +122,9 @@ temporary directory. It does not patch deckgen, your course sources, or classpoi
 As with a normal deckgen build, executing a trusted deck module can run its own
 figure-generation/import code. Do not point `--project` at an untrusted course repo.
 
-The first multiple-choice slide is selected initially. Reveal's arrows, fragments,
-and notes still work. Click **Open this question** on another multiple-choice slide
+The first supported activity slide is selected initially: multiple choice,
+single image upload or short answer. Reveal's arrows, fragments,
+and notes still work. Click **Open this question** on another supported activity slide
 to end the previous activity and start the new one in the same class. Slide changes
 are debounced and synchronized to the student viewer while the class is active.
 The existing `[data-classpoint]` badge is made keyboard/click actionable in the local
