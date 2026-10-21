@@ -1,13 +1,18 @@
 # Deckgen / ClassPoint HTML Presenter POC
 
 Present a real **deckgen HTML deck**, start your ClassPoint class, send the current
-slide, and open multiple choice. Students still join and submit in ClassPoint's
+slide, and open multiple choice, single image upload or short answer. Students still join and submit in ClassPoint's
 existing student app. PowerPoint is not required.
 
 This is an unofficial protocol experiment, not an Inknoe-supported integration.
 The POC imports the instructor identity and signed upload configuration from your
 own decrypted test capture. The instructor confirmed that the POC worked in a
-live test on 2026-10-04. It does not implement login or establish that the
+multiple-choice live test on 2026-10-04. On 2026-10-21, a real ClassPoint test with
+a synthetic participant verified single image upload, a decoded operator thumbnail
+and one-response short answer in one instructor setup. See the
+[live acceptance record](../../docs/live-image-upload-handoff.md#live-acceptance-21-october-2026)
+and [repeatable acceptance procedure](../../docs/live-image-upload-handoff.md#required-instructor-run-live-acceptance).
+It does not implement login or establish that the
 server accepts every independently created presenter session.
 
 This directory preserves the working POC for a cloud-session handoff. It is not
@@ -119,8 +124,9 @@ temporary directory. It does not patch deckgen, your course sources, or classpoi
 As with a normal deckgen build, executing a trusted deck module can run its own
 figure-generation/import code. Do not point `--project` at an untrusted course repo.
 
-The first multiple-choice slide is selected initially. Reveal's arrows, fragments,
-and notes still work. Click **Open this question** on another multiple-choice slide
+The first supported activity slide is selected initially: multiple choice,
+single image upload or short answer. Reveal's arrows, fragments,
+and notes still work. Click **Open this question** on another supported activity slide
 to end the previous activity and start the new one in the same class. Slide changes
 are debounced and synchronized to the student viewer while the class is active.
 The existing `[data-classpoint]` badge is made keyboard/click actionable in the local
@@ -169,12 +175,18 @@ value. Without an expected code, startup accepts and displays the returned code.
 
 ## Current Limits
 
-Only multiple choice is wired. Stars, quiz grading, countdowns, report persistence,
+Multiple choice, single image upload and short answer are implemented experimentally.
+Image/text is source-backed, mock-tested and live-tested with a synthetic
+participant in one setup on 2026-10-21. The live test verified one image and one
+short answer; the three-answer limit and retry/update behavior remain unverified live.
+See [status and acceptance](../../docs/live-image-upload-handoff.md).
+Stars, quiz grading, countdowns, report persistence,
 and automatic reconnect are not implemented. A fresh screenshot captures the
 specified slide/fragment in a headless browser, not live DOM edits or the current
 state of an interactive sketch/video in the presenting browser. Those require a
-future in-browser snapshot/state-transfer path. This proves the static HTML-slide
-and multiple-choice workflow first.
+future in-browser snapshot/state-transfer path. The static HTML-slide and MC
+workflow has prior instructor live validation. Validate your own account/software
+setup and any required limits or recovery behavior before classroom use.
 
 Always end the class with the button before stopping the server. Graceful shutdown
 also attempts to end it, but a disconnected server or forced termination cannot

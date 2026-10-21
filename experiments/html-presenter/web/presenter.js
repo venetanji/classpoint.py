@@ -7,6 +7,8 @@ const elements = Object.fromEntries([
   "response-count", "participant-count", "votes", "log", "region", "sync-status",
 ].map(id => [id, document.getElementById(id)]));
 
+const activityLabels = { multiple_choice: "multiple-choice", image_upload: "image upload", short_answer: "short-answer" };
+let lastResponses = "";
 let boot;
 let state;
 let reveal;
@@ -42,7 +44,7 @@ function selection() {
 
 function canOpenQuestion() {
   const slide = boot?.slides[selected.slide_index];
-  return Boolean(reveal && slide?.activity?.type === "multiple_choice"
+  return Boolean(reveal && activityLabels[slide?.activity?.type]
     && !busy && state.phase !== "starting"
     && !(state.phase === "error" && state.can_end)
     && !(state.phase === "open" && state.active_slide === selected.slide_index));
@@ -52,6 +54,7 @@ function render() {
   if (!boot || !state) return;
   const slide = boot.slides[selected.slide_index];
   const multipleChoice = slide?.activity?.type === "multiple_choice";
+  const activityLabel = activityLabels[slide?.activity?.type];
   const sameActivity = state.active_slide === selected.slide_index;
   const working = busy || state.phase === "starting";
   elements["connection-label"].textContent = {
@@ -79,16 +82,20 @@ function render() {
   elements.audience.disabled = !reveal;
   elements["slide-position"].textContent = `${selected.slide_index + 1} / ${boot.slides.length}`;
   elements["slide-title"].textContent = slide?.title || "";
-  elements["activity-note"].textContent = multipleChoice
-    ? "You can also click the multiple-choice badge inside the slide."
-    : "This slide has no supported multiple-choice activity. Navigate to a multiple-choice slide.";
+  elements["activity-note"].textContent = activityLabel
+    ? `Click the ${activityLabel} badge inside the slide. Responses stay in the operator window.`
+    : "This slide has no supported live activity.";
   const problem = localError || state.error;
   elements.error.hidden = !problem;
   elements.error.textContent = problem || "";
   const responseCount = state.responses.length;
   elements["response-count"].textContent = responseCount ? `${responseCount} response${responseCount === 1 ? "" : "s"}` : "No responses yet";
+  if (state.responses_limited) elements["response-count"].textContent += " (local limit reached)";
   elements["participant-count"].textContent = state.participants ? `${state.participants} student${state.participants === 1 ? "" : "s"} connected` : "No students connected";
-  const choices = state.activity_choices.length ? state.activity_choices : multipleChoice ? slide.activity.choices : [];
+  const responseKey = JSON.stringify([state.activity_type, state.responses, state.activity_choices, selected.slide_index]);
+  if (responseKey !== lastResponses) {
+  lastResponses = responseKey;
+  const choices = state.activity_type !== "multiple_choice" ? [] : state.activity_choices.length ? state.activity_choices : multipleChoice ? slide.activity.choices : [];
   const voteNodes = choices.map(choice => {
     const count = state.responses.filter(answer => answer.includes(choice)).length;
     const row = document.createElement("div");
@@ -110,13 +117,45 @@ function render() {
     row.append(label, track, total);
     return row;
   });
+  if (state.activity_type === "image_upload" || state.activity_type === "short_answer") {
+    voteNodes.length = 0;
+    for (const answer of state.responses) {
+      const row = document.createElement("figure");
+      row.className = "submission";
+      if (state.activity_type === "image_upload") {
+        const status = document.createElement("p");
+        status.textContent = "Image preview unavailable";
+        row.append(status);
+        // Only known ClassPoint upload storage is automatically fetched. No local
+        // proxy and no arbitrary URLs supplied by a participant are requested.
+        let url;
+        try { url = new URL(answer.image_url); } catch { /* retain placeholder */ }
+        if (url?.protocol === "https:" && url.origin === state.media_origin
+            && !url.username && !url.password && !url.port && !url.search && url.pathname.startsWith("/user/")) {
+          const image = document.createElement("img");
+          image.alt = "Submitted image";
+          image.loading = "lazy";
+          image.referrerPolicy = "no-referrer";
+          image.addEventListener("load", () => { status.hidden = true; });
+          image.addEventListener("error", () => { image.hidden = true; status.hidden = false; });
+          image.src = url.href;
+          row.prepend(image);
+        }
+      }
+      const caption = document.createElement("figcaption");
+      caption.textContent = answer.caption ?? answer.text ?? "";
+      row.append(caption);
+      voteNodes.push(row);
+    }
+  }
   if (!voteNodes.length) {
     const empty = document.createElement("p");
     empty.className = "empty-votes";
-    empty.textContent = "Open a multiple-choice question to collect answers.";
+    empty.textContent = "Open an activity to collect responses.";
     voteNodes.push(empty);
   }
   elements.votes.replaceChildren(...voteNodes);
+  }
   elements.region.textContent = state.region;
   const serializedLog = JSON.stringify(state.log);
   if (serializedLog !== lastLog) {
@@ -210,11 +249,11 @@ async function connectDeck() {
   reveal.on("fragmenthidden", slideChanged);
   windowInside.document.querySelectorAll("[data-classpoint]").forEach(marker => {
     const index = Number(marker.closest("section[data-slide]")?.dataset.slide) - 1;
-    if (boot.slides[index]?.activity?.type !== "multiple_choice") return;
+    if (!activityLabels[boot.slides[index]?.activity?.type]) return;
     marker.setAttribute("role", "button");
     marker.setAttribute("tabindex", "0");
     marker.removeAttribute("href");
-    marker.setAttribute("aria-label", "Open this multiple-choice question in ClassPoint");
+    marker.setAttribute("aria-label", `Open this ${activityLabels[boot.slides[index].activity.type]} question in ClassPoint`);
     marker.style.cursor = "pointer";
     const open = event => {
       event.preventDefault();

@@ -69,8 +69,12 @@ class MockClassPoint:
                     })
                 elif target == "PresenterStartActivity":
                     dto = message["arguments"][0]
-                    assert dto["activityType"] == "Multiple Choice"
-                    assert dto["mcChoices"] == ["A", "B", "C", "D"]
+                    assert dto["activityType"] in {"Multiple Choice", "Image Upload", "Short Answer"}
+                    if dto["activityType"] == "Multiple Choice":
+                        assert dto["mcChoices"] == ["A", "B", "C", "D"]
+                    else:
+                        assert not any(key.startswith("mc") or key == "isQuizMode" for key in dto)
+                        assert dto["numOfSubmissionsAllowed"] in (1, 3)
                     self.activity = dto["activityId"]
                 completion = {"type": 3, "invocationId": message["invocationId"]}
                 if self.fail_close and target == "PresenterCloseSubmission":
@@ -187,6 +191,109 @@ async def check_audience(browser, profile, directory, output):
         await runner.cleanup()
 
 
+async def check_typed_activities(browser, profile, mock, directory):
+    course = directory / "typed-course"
+    (course / "deck").mkdir(parents=True)
+    (course / "deckgen.toml").write_text('[course]\ncode="TEST"\nname="Typed fixture"\ndecks=["week01"]\n')
+    (course / "deck/week01.py").write_text(
+        'from deckgen.layouts import question, finalize\n'
+        'DECK={"title":"Typed fixture","console":False,"slides":finalize(['
+        'question("image_upload","Upload a synthetic image"),'
+        'question("multiple_choice","MC",choices=["One","Two","Three","Four"]),'
+        'question("short_answer","Write a synthetic response")],"TEST")}\n'
+    )
+    deck = render_deck(directory / "typed-site", course, "week01")
+    assert deck.initial_slide == 0 and deck.selection({})['type'] == 'image_upload'
+    port = free_port()
+    runner, url = await serve(create_app(profile, deck, port), port)
+    context = await browser.new_context(viewport={"width": 1440, "height": 900})
+    external, errors, media_requests = [], [], []
+    image_url = 'https://cpfile11.blob.core.windows.net/user/synthetic.png'
+    broken_url = 'https://cpfile11.blob.core.windows.net/user/broken.png'
+    image_bytes = io.BytesIO()
+    Image.new('RGB', (4, 4), 'green').save(image_bytes, format='PNG')
+    async def local_requests_only(route):
+        request_url = route.request.url
+        if request_url == image_url:
+            media_requests.append(request_url)
+            await route.fulfill(status=200, content_type='image/png', body=image_bytes.getvalue())
+        elif request_url == broken_url:
+            media_requests.append(request_url)
+            await route.fulfill(status=404, content_type='text/plain', body='Synthetic missing image')
+        elif request_url.startswith((url, profile.mock_url, 'data:', 'about:')):
+            await route.continue_()
+        else:
+            external.append(request_url)
+            await route.abort()
+    await context.route('**/*', local_requests_only)
+    try:
+        page = await context.new_page()
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        await page.goto(url)
+        await page.wait_for_function("!document.querySelector('#start').disabled")
+        await page.frame_locator('#deck').locator('[data-classpoint]').first.focus()
+        await page.keyboard.press('Enter')
+        await page.wait_for_function("document.querySelector('#connection-label').textContent === 'Live / submissions open'")
+        answer = {'activityId':mock.activity,'responseId':'image-ui','responseData':json.dumps([image_url,'<script>danger()</script> 🌱'])}
+        await mock.event('ParticipantSubmittedResponse', answer)
+        await mock.event('ParticipantSubmittedResponse', answer)
+        await page.locator('.submission img').wait_for()
+        await page.wait_for_function("document.querySelector('.submission img').naturalWidth === 4")
+        assert await page.locator('.submission figcaption').inner_text() == '<script>danger()</script> 🌱'
+        assert await page.locator('.submission').count() == 1
+        async with page.expect_popup() as popup:
+            await page.locator('#audience').click()
+        audience = await popup.value
+        await audience.wait_for_function("document.querySelector('#deck').contentWindow.Reveal?.isReady()")
+        assert await audience.locator('.submission,#votes,#start,#close,#end').count() == 0
+        await page.locator('#deck').evaluate('el => el.contentWindow.Reveal.slide(1)')
+        await page.wait_for_function("document.querySelector('#slide-position').textContent.startsWith('2 /')")
+        assert await page.locator('.submission').count() == 1
+        assert await page.locator('.vote').count() == 0
+        await page.locator('#start').click()
+        await page.wait_for_function("document.querySelectorAll('.vote').length === 4")
+        assert await page.locator('.submission').count() == 0
+        await mock.event('ParticipantSubmittedResponse', {'activityId':mock.activity,'responseId':'mc-ui','responseData':'["B"]'})
+        await page.wait_for_function("document.querySelectorAll('.vote-count')[1].textContent === '1'")
+        await page.locator('#deck').evaluate('el => el.contentWindow.Reveal.slide(0)')
+        await page.wait_for_function("document.querySelector('#slide-position').textContent.startsWith('1 /')")
+        assert await page.locator('.vote-count').all_text_contents() == ['0','1','0','0']
+        await page.locator('#deck').evaluate('el => el.contentWindow.Reveal.slide(2)')
+        await page.wait_for_function("document.querySelector('#slide-position').textContent.startsWith('3 /')")
+        assert await page.locator('.vote-count').all_text_contents() == ['0','1','0','0']
+        await page.wait_for_function("!document.querySelector('#start').disabled")
+        await page.locator('#start').click()
+        await page.wait_for_function("document.querySelector('#start').textContent === 'Question open'")
+        await mock.event('ParticipantSubmittedResponse', {'activityId':mock.activity,'responseId':'text-ui','responseData':'<p>Safe &amp; simple</p>'})
+        await page.locator('.submission figcaption').filter(has_text='Safe & simple').wait_for()
+        await page.locator('#deck').evaluate('el => el.contentWindow.Reveal.slide(1)')
+        await page.wait_for_function("document.querySelector('#slide-position').textContent.startsWith('2 /')")
+        assert await page.locator('.submission figcaption').inner_text() == 'Safe & simple'
+        assert await audience.locator('.submission,#votes,#start,#close,#end').count() == 0
+        assert await page.locator('.vote').count() == 0
+        await page.locator('#deck').evaluate('el => el.contentWindow.Reveal.slide(0)')
+        await page.wait_for_function("!document.querySelector('#start').disabled")
+        await page.locator('#start').click()
+        await page.wait_for_function("document.querySelector('#start').textContent === 'Question open'")
+        await mock.event('ParticipantSubmittedResponse', {'activityId':mock.activity,'responseId':'blocked-ui','responseData':json.dumps(['https://private.example.test/user/x','Blocked media'])})
+        await page.locator('.submission figcaption').filter(has_text='Blocked media').wait_for()
+        assert await page.locator('.submission img,.submission a').count() == 0
+        await mock.event('ParticipantSubmittedResponse', {'activityId':mock.activity,'responseId':'broken-ui','responseData':json.dumps([broken_url,'Broken thumbnail'])})
+        await page.locator('.submission figcaption').filter(has_text='Broken thumbnail').wait_for()
+        await page.wait_for_function("Array.from(document.querySelectorAll('.submission')).some(row => row.querySelector('figcaption').textContent === 'Broken thumbnail' && row.querySelector('img')?.hidden && !row.querySelector('p').hidden)")
+        assert not await page.locator('#close').is_disabled()
+        assert not await page.locator('#end').is_disabled()
+        await page.locator('#close').click()
+        await page.wait_for_function("document.querySelector('#connection-label').textContent === 'Live / submissions closed'")
+        await page.locator('#end').click()
+        await page.wait_for_function("document.querySelector('#connection-label').textContent === 'Class ended'")
+        assert media_requests and not errors and not external, (errors, external)
+        print('PASS: synthetic image gallery, safe captions, blocked external media, typed badges, MC/image/text mixed navigation and resets')
+    finally:
+        await context.close()
+        await runner.cleanup()
+
+
 async def main():
     mock = MockClassPoint()
     remote = web.Application()
@@ -269,11 +376,49 @@ async def main():
                     assert len(mock.uploads) == uploads_before
                 mock.code_override = None
                 profile.class_options["classCode"] = None
+                image_config = {**config, "type": "image_upload", "choices": [], "caption_required": True, "hide_names": True}
+                await bridge.start(image_config, fake_snapshot)
+                assert bridge.active_activity.startswith("iu")
+                dto = mock.commands[-1]["arguments"][0]
+                assert dto["isCaptionRequired"] is True and dto["isNamesHidden"] is True
+                assert dto["numOfSubmissionsAllowed"] == 1
+                answer = {"responseId": "image-1", "activityId": bridge.active_activity,
+                          "responseData": json.dumps(["https://cpfile11.blob.core.windows.net/user/mock.png", "こんにちは <script>x</script>"])}
+                await mock.event("ParticipantSubmittedResponse", answer)
+                await mock.event("ParticipantSubmittedResponse", answer)
+                await eventually(lambda: len(bridge.responses) == 1)
+                assert bridge.state()["responses"][0]["caption"] == "こんにちは <script>x</script>"
+                assert bridge.state()["responses"][0]["image_url"] == "https://cpfile11.blob.core.windows.net/user/mock.png"
+                await mock.event("ParticipantSubmittedResponse", {**answer, "responseId": "bad", "responseData": "{}"})
+                await bridge.close_submissions()
+                assert len(bridge.responses) == 1
+                await bridge.open_activity({**config, "type": "short_answer", "multiple": True, "choices": []}, fake_snapshot)
+                assert bridge.active_activity.startswith("sa") and not bridge.responses
+                assert mock.commands[-1]["arguments"][0]["numOfSubmissionsAllowed"] == 3
+                await mock.event("ParticipantSubmittedResponse", {"responseId": "text-1", "activityId": bridge.active_activity, "responseData": "<p>Hello &amp; world</p>"})
+                await eventually(lambda: len(bridge.responses) == 1)
+                assert bridge.state()["responses"] == [{"text": "Hello & world"}]
+                await bridge.end()
+                before = len(mock.commands)
+                try:
+                    await bridge.start({**config, "type": "video_upload"}, fake_snapshot)
+                    raise AssertionError("Unsupported type accepted")
+                except ValueError:
+                    assert len(mock.commands) == before
+                mock.reject = "PresenterStartActivity"
+                try:
+                    await bridge.start(image_config, fake_snapshot)
+                    raise AssertionError("Image start failure reported success")
+                except RuntimeError:
+                    assert not bridge.class_started
+                print("PASS: image/short-answer startup, exact typed messages, deduplication, safe responses, switching, cleanup and rejected start")
                 print("PASS: configured join code, mismatch detection and cleanup before opening a question")
                 print("PASS: mock SignalR lifecycle, answers, rejection, cleanup, retry, and privacy")
             finally:
                 await bridge.disconnect()
 
+        if "--protocol-only" in sys.argv:
+            return
         mock.commands.clear()
         mock.uploads.clear()
         output = Path(tempfile.gettempdir()) / "classpoint-poc-validation"
@@ -364,6 +509,7 @@ async def main():
                         assert not external, "Generated demo unexpectedly requested external assets"
                         print("PASS: desktop/mobile, click and keyboard badges, tallies, error recovery, no page errors")
                         await check_audience(browser, profile, directory, output)
+                        await check_typed_activities(browser, profile, mock, directory)
                     finally:
                         await browser.close()
             finally:
