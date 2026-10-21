@@ -7,9 +7,11 @@ existing student app. PowerPoint is not required.
 This is an unofficial protocol experiment, not an Inknoe-supported integration.
 The POC imports the instructor identity and signed upload configuration from your
 own decrypted test capture. The instructor confirmed that the POC worked in a
-multiple-choice live test on 2026-10-04. Image/text support has passed synthetic
-protocol and browser tests, but still requires the separate
-[instructor-run live acceptance](../../docs/live-image-upload-handoff.md#required-instructor-run-live-acceptance).
+multiple-choice live test on 2026-10-04. On 2026-10-21, a real ClassPoint test with
+a synthetic participant verified single image upload, a decoded operator thumbnail
+and one-response short answer in one instructor setup. See the
+[live acceptance record](../../docs/live-image-upload-handoff.md#live-acceptance-21-october-2026)
+and [repeatable acceptance procedure](../../docs/live-image-upload-handoff.md#required-instructor-run-live-acceptance).
 It does not implement login or establish that the
 server accepts every independently created presenter session.
 
@@ -174,14 +176,17 @@ value. Without an expected code, startup accepts and displays the returned code.
 ## Current Limits
 
 Multiple choice, single image upload and short answer are implemented experimentally.
-Image/text is source-backed and mock-tested, but still needs instructor live acceptance.
+Image/text is source-backed, mock-tested and live-tested with a synthetic
+participant in one setup on 2026-10-21. The live test verified one image and one
+short answer; the three-answer limit and retry/update behavior remain unverified live.
 See [status and acceptance](../../docs/live-image-upload-handoff.md).
 Stars, quiz grading, countdowns, report persistence,
 and automatic reconnect are not implemented. A fresh screenshot captures the
 specified slide/fragment in a headless browser, not live DOM edits or the current
 state of an interactive sketch/video in the presenting browser. Those require a
 future in-browser snapshot/state-transfer path. The static HTML-slide and MC
-workflow has prior instructor live validation; image/text still need that check.
+workflow has prior instructor live validation. Validate your own account/software
+setup and any required limits or recovery behavior before classroom use.
 
 Always end the class with the button before stopping the server. Graceful shutdown
 also attempts to end it, but a disconnected server or forced termination cannot

@@ -6,7 +6,10 @@ The experimental HTML presenter now supports **multiple choice, single image
 upload, and short answer**. PR #3 originally contained only a handoff; it now
 implements the activity selection, typed start messages, bounded response
 normalization, and operator-only image/text results. It remains an unofficial
-experimental integration. **Image upload has not been verified in a live class.**
+experimental integration. **Live image upload and one-response short answer
+passed on 2026-10-21 with a synthetic participant in one instructor setup.**
+See the [live acceptance record](#live-acceptance-21-october-2026) for scope and
+remaining limits.
 
 Source inspection on 2026-10-21 found the exact outgoing builder in ClassPoint's
 public presenter app and image/text submission formats in its public student
@@ -78,15 +81,51 @@ image/text lifecycle, typed messages, deduplication, rejected starts, cleanup,
 join-code checks, desktop/mobile UI and passive audience behavior, plus mixed
 MC/image/text navigation, caption safety and blocked third-party images.
 
-Local results in the cloud session: existing 35 checks pass; ten typed/safety
-unit tests pass; mock SignalR image/text/MC lifecycle checks pass. JavaScript
-syntax checks pass. Full browser execution is currently blocked locally:
-Playwright's browser download returned an invalid archive; the installed
-Chromium cannot create its process singleton socket in this sandbox. The browser
-checks are therefore **not claimed as locally passed**; see the PR's exact-head
-GitHub workflow result for browser evidence.
+In the original cloud session, the existing 35 checks, ten typed/safety unit
+tests, mock SignalR lifecycle checks and JavaScript syntax checks passed. Browser
+execution there was blocked by a failed Playwright download and Chromium process
+singleton socket permissions. Subsequently, the full synthetic SignalR/Chromium
+validator passed on the instructor's laptop with `/usr/bin/chromium`, and the
+[GitHub workflow passed on runtime-tested head `40a6af7`](https://github.com/venetanji/classpoint.py/actions/runs/39581466031).
+These offline checks use mocks; the separate live test is recorded below.
+
+## Live acceptance, 21 October 2026
+
+Runtime-tested commit: `40a6af722defe24bc1b8a9a90b30952bb405c3b1`.
+Environment: Python 3.12.15, Chromium 155.0.8059.84 and Arch Linux. The instructor
+authorized an automated test with the existing private account/configuration,
+a synthetic participant and a generated image. This exercised the real ClassPoint
+student app and backend using the Week 7 course deck, rather than mock services.
+
+- An initial join-code mismatch stopped startup and ended the incomplete class.
+  After restoring the configured code with the previously captured operation,
+  startup returned the expected code and opened Short Answer. Account capacity
+  was preserved.
+- The synthetic participant submitted text through the real student's rich-text
+  editor. The matching plain-text response appeared in the operator gallery,
+  and the presenter successfully closed text submissions.
+- Switching to Image Upload was accepted by the backend. A generated PNG was
+  selected through the actual student file input and submitted with a synthetic
+  caption. The operator showed exactly one matching item/caption and decoded the
+  remote thumbnail successfully.
+- Image submissions closed successfully. Navigating to the text slide without
+  opening it retained the active image result. Explicit End class completed;
+  local state confirmed `phase=ended`, `can_end=false` and `connected=false`
+  before stopping the test browser.
+
+This establishes one live image upload and one-response short answer for this
+setup. Three real short-answer submissions, retry/update behavior, server-enforced
+limits, a new live MC tally and a physical phone/projector were not tested.
+MC behavior and audience isolation passed synthetic browser validation. External
+or search-selected images, other storage regions, report persistence and reconnect
+remain outside this acceptance. No private capture, credential, identity, join
+code, caption, media URL, student screenshot or response export is published.
 
 ## Required instructor-run live acceptance
+
+The recorded test covers the setup above. Repeat acceptance with your own
+account/software setup before relying on it, including any limits or recovery
+behavior your class requires.
 
 Use your own existing private capture/configuration locally; do not upload it,
 TLS keys or signed URLs into a PR or chat. Close PowerPoint. Use a trusted demo
@@ -111,8 +150,8 @@ uv run python presenter.py --capture /private/path/test.pcapng \
 5. End class explicitly and confirm the participant sees it end. On any error,
    use End class before retrying; forced process shutdown cannot assure cleanup.
 
-Only after this check can the PR claim live student image upload works. Record
-pass/fail and software/account conditions without publishing identities, real
+Record the checks actually performed and their pass/fail and software/account
+conditions without publishing identities, real
 codes, captions, screenshots of students or credential-bearing traffic. Uploaded
 images may persist after a class ends. This change does not add deletion.
 

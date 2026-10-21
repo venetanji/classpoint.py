@@ -61,4 +61,6 @@ Student binds ActivityStarted (object or JSON string), ActivityClosed, ActivityE
 
 ## What remains unverified
 
-Actual backend acceptance for these fields/account/version; whether missing optional fields have server defaults; current response transport limits; server-enforced multiplicity/caption limits; actual student browser upload and presenter gallery; failure/reconnect/late submission behavior in a live class. Native-host options UI defaults not recoverable from these bundles. Source findings justify an evidence-backed experimental implementation plus offline regressions, not claiming live image upload works.
+A subsequent, separate [live acceptance test on 2026-10-21](live-image-upload-handoff.md#live-acceptance-21-october-2026) verified backend acceptance, actual student browser image upload, a decoded operator gallery thumbnail and one-response short answer in one instructor setup. That test does not change the public-source-only provenance of this research.
+
+Still unverified: other accounts/versions; whether missing optional fields have server defaults; current response transport limits; server-enforced multiplicity/caption limits; three real short-answer submissions; retry/update, reconnect and late-submission behavior in a live class. Native-host options UI defaults are not recoverable from these bundles. The integration remains experimental rather than a supported backend API contract.
