@@ -23,6 +23,11 @@ itself still requires explicit **End class** before stopping.
 
 ## Ownership and Dependency Direction
 
+For the next activity-type investigation, see
+[Live image upload and short answer: cloud-session handoff](live-image-upload-handoff.md).
+It records the current multiple-choice assumptions, protocol evidence still
+needed, and acceptance checks. It does not implement or verify live support.
+
 ```text
 deckgen presenter (slides, browser, local UI)
     -> classpoint.py live client (ClassPoint protocol and uploads)
