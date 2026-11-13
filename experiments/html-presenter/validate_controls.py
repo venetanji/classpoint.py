@@ -111,11 +111,31 @@ async def main():
                     assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth')
                     await press(0)
                     await audience.wait_for_function("document.querySelector('.answer-panel').hidden")
+                    await press(1)
+                    await page.wait_for_function("document.querySelector('#slide-position').textContent.startsWith('2 /')")
+                    await page.wait_for_function("!document.querySelector('#start').disabled")
+                    await page.frame_locator('#deck').locator('[data-classpoint]').nth(1).click()
+                    await page.locator('.answer-panel').wait_for()
+                    await page.wait_for_function("document.querySelector('.answer-count').textContent === '0 answers'")
+                    close_empty = page.locator('.answer-footer button').first
+                    assert await close_empty.is_enabled(), 'An empty open question must be closable'
+                    assert await page.locator('#finish-question').is_enabled()
+                    assert await page.locator('#finish-question').inner_text() == 'Close submissions'
+                    await page.locator('#finish-question').click()
+                    await page.wait_for_function("document.querySelector('#connection-label').textContent === 'Live / submissions closed'")
+                    assert await close_empty.inner_text() == 'Submissions closed'
+                    assert await page.locator('#close').inner_text() == 'Submissions closed'
+                    assert await page.locator('.answer-empty').inner_text() == 'No answers for this question.'
+                    assert await page.locator('#finish-question').is_disabled()
+                    assert await page.locator('#finish-question').inner_text() == 'No respondents to award'
+                    assert sum(c['target']=='GivePointsToParticipants' for c in mock.commands) == 1, 'Closing an empty question must not award stars'
+                    await press(0)
+                    await page.wait_for_function("document.querySelector('.answer-panel').hidden")
                     await page.locator('#end').click()
                     await page.wait_for_function("document.querySelector('#connection-label').textContent === 'Class ended'")
                     assert not errors, errors
                     await browser.close()
-                    print('PASS: controller navigation, held-button protection, 35 answers, scroll sync, fullscreen, mobile and 18 unique star recipients')
+                    print('PASS: controller navigation, held-button protection, 35 answers, scroll sync, fullscreen, mobile, 18 unique star recipients and empty-question close')
                     print(f'Screenshots: {shots}')
             finally:
                 await runner.cleanup()
