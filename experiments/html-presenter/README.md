@@ -161,7 +161,10 @@ must expose the browser's standard mapping; unknown layouts do not fire actions.
 Xbox equivalents are B/RB for forward, X/LB for back, Y for answers and A to hide.
 Controller buttons never start a remote class or award stars.
 
-Open a short-answer question using its slide badge or **Start class + question**.
+On a regular slide, **Start class** connects ClassPoint and displays the verified
+join code without opening a question. Students can join while the lecture starts.
+Open a short-answer question later using its slide badge; on a question slide,
+**Start class + question** can still start both together.
 Its existing slide button opens the question and the answer panel together.
 After hiding the panel, click that same slide button to see the answers again;
 this reuses the activity, including after submissions are closed. Triangle also
