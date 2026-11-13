@@ -135,6 +135,30 @@ class JoinCodeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["class_code"], "sd5913")
         self.assertNotIn("PresenterRestartClass", self.targets())
 
+    async def test_class_only_start_verifies_code_without_opening_or_ending_an_activity(self):
+        self.profile.class_options["classCode"] = "SD2112"
+        self.socket.restarted_code = "SD2112"
+        config = {"slide_index": 0, "fragment_index": -1, "total_slides": 1}
+        async def snapshot():
+            return b"synthetic-jpeg"
+        result = await self.bridge.start(config, snapshot, open_question=False)
+        self.assertEqual(result["class_code"], "SD2112")
+        self.assertEqual(result["phase"], "closed")
+        self.assertTrue(result["can_end"])
+        self.assertIsNone(result["active_slide"])
+        self.assertIsNone(result["activity_type"])
+        self.assertIsNone(self.bridge.active_activity)
+        self.assertFalse(self.bridge.activity_started)
+        self.assertEqual(self.targets(), [
+            "PresenterStartSlideshow", "PresenterRestartClass", "upload", "PresenterGotoStep",
+        ])
+        await self.bridge.end()
+        self.assertEqual(self.targets(), [
+            "PresenterStartSlideshow", "PresenterRestartClass", "upload", "PresenterGotoStep",
+            "PresenterEndSlideshow",
+        ])
+        self.assertEqual(self.bridge.phase, "ended")
+
     async def test_unconfigured_code_accepts_returned_code_without_restart(self):
         self.profile.class_options["classCode"] = None
         result = await self.start()

@@ -125,6 +125,10 @@ function canOpenQuestion() {
     && !(state.phase === "open" && state.active_slide === selected.slide_index));
 }
 
+function canStartClass() {
+  return Boolean(reveal && !busy && !state.can_end && state.phase !== "starting");
+}
+
 function render() {
   if (!boot || !state) return;
   const slide = boot.slides[selected.slide_index];
@@ -133,8 +137,8 @@ function render() {
   const sameActivity = state.active_slide === selected.slide_index;
   const working = busy || state.phase === "starting";
   elements["connection-label"].textContent = {
-    idle: "Ready / no remote connection", starting: "Starting class and question...",
-    open: "Live / submissions open", closed: "Live / submissions closed",
+    idle: "Ready / no remote connection", starting: "Starting ClassPoint...",
+    open: "Live / submissions open", closed: state.active_slide == null ? "Live / ready for questions" : "Live / submissions closed",
     ended: "Class ended", error: "Session needs attention",
   }[state.phase] || state.phase;
   elements["status-dot"].className = `status-dot${state.phase === "error" ? " error" : state.connected ? " live" : ""}`;
@@ -147,8 +151,11 @@ function render() {
     ? "Students use the existing ClassPoint app. This browser is the presenter."
     : state.expected_class_code ? `Start the ${state.expected_class_code} class from here. Close PowerPoint first.`
     : "Close PowerPoint, then start the class from here. This uses the instructor profile from your own capture.";
-  elements.start.disabled = !canOpenQuestion();
-  elements.start.textContent = working ? "Working..." : !state.can_end ? state.phase === "error" ? "Retry class + question" : "Start class + question" : state.phase === "open" && sameActivity ? "Question open" : "Open this question";
+  elements.start.disabled = state.can_end ? !canOpenQuestion() : !canStartClass();
+  elements.start.textContent = working ? "Working..." : !state.can_end
+    ? activityLabel ? state.phase === "error" ? "Retry class + question" : "Start class + question"
+      : state.phase === "error" ? "Retry class" : "Start class"
+    : !activityLabel ? "Class connected" : state.phase === "open" && sameActivity ? "Question open" : "Open this question";
   elements.close.disabled = working || state.phase !== "open";
   elements.close.textContent = state.phase === "closed" ? "Submissions closed" : "Close submissions";
   elements.end.disabled = working || !state.can_end;
@@ -162,7 +169,8 @@ function render() {
   elements["slide-title"].textContent = slide?.title || "";
   elements["activity-note"].textContent = activityLabel
     ? `Click the ${activityLabel} button inside the slide.${activityLabel === "short-answer" ? " It opens the question and its scrollable answers on the slides and audience screen." : " Responses stay in the operator window."}`
-    : "This slide has no supported live activity.";
+    : state.can_end ? "ClassPoint is connected. Open questions using their buttons inside the slides."
+      : "Start ClassPoint now so students can join. Open questions later using their slide buttons.";
   const problem = localError || state.error;
   elements.error.hidden = !problem;
   elements.error.textContent = problem || "";
@@ -264,8 +272,8 @@ async function send(action, body = {}) {
 
 async function run(action, showAnswers = false) {
   if (busy) return;
-  if (["start", "activity"].includes(action)) {
-    if (!canOpenQuestion()) return;
+  if (["start", "class", "activity"].includes(action)) {
+    if (action === "class" ? !canStartClass() : !canOpenQuestion()) return;
     queuedSync = null;
     clearTimeout(syncTimer);
   }
@@ -373,7 +381,8 @@ async function poll() {
   }
 }
 
-elements.start.addEventListener("click", () => run(state.can_end ? "activity" : "start"));
+elements.start.addEventListener("click", () => run(state.can_end ? "activity"
+  : activityLabels[boot.slides[selected.slide_index]?.activity?.type] ? "start" : "class"));
 elements.close.addEventListener("click", () => run("close"));
 elements.end.addEventListener("click", () => {
   queuedSync = null;

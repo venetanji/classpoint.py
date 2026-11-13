@@ -26,10 +26,11 @@ async def main():
             (root / 'course/deck').mkdir(parents=True)
             (root / 'course/deckgen.toml').write_text('[course]\ncode="TEST"\nname="Controller rehearsal"\ndecks=["week01"]\n')
             (root / 'course/deck/week01.py').write_text(
-                'from deckgen.layouts import question, finalize\n'
+                'from deckgen.layouts import question, content, finalize\n'
                 'DECK={"title":"Controller rehearsal","console":False,"slides":finalize(['
                 'question("short_answer","What should we test?"),'
-                'question("short_answer","A second question")],"TEST")}\n')
+                'question("short_answer","A second question"),'
+                'content("ORDINARY SLIDE","Start the class first.",["This slide has no activity."])],"TEST")}\n')
             deck = render_deck(root / 'site', root / 'course', 'week01')
             port = free_port()
             app = create_app(profile, deck, port)
@@ -162,9 +163,31 @@ async def main():
                     await page.wait_for_function("document.querySelector('.answer-panel').hidden")
                     await page.locator('#end').click()
                     await page.wait_for_function("document.querySelector('#connection-label').textContent === 'Class ended'")
+                    activities_started = sum(c['target']=='PresenterStartActivity' for c in mock.commands)
+                    classes_started = sum(c['target']=='PresenterStartSlideshow' for c in mock.commands)
+                    await press(1)
+                    await page.wait_for_function("document.querySelector('#slide-position').textContent.startsWith('3 /')")
+                    assert await page.locator('#start').is_enabled(), 'An ordinary slide must allow starting the class without a question'
+                    await page.locator('#start').click()
+                    await page.wait_for_function("document.querySelector('#connection-label').textContent === 'Live / ready for questions'")
+                    assert sum(c['target']=='PresenterStartSlideshow' for c in mock.commands) == classes_started + 1
+                    assert sum(c['target']=='PresenterStartActivity' for c in mock.commands) == activities_started, 'Starting from an ordinary slide must not open a question'
+                    assert app[BRIDGE].state()['active_slide'] is None
+                    await press(2)
+                    await page.wait_for_function("document.querySelector('#slide-position').textContent.startsWith('2 /')")
+                    await page.wait_for_function("!document.querySelector('#start').disabled")
+                    await page.frame_locator('#deck').locator('[data-classpoint]').nth(1).click()
+                    await page.wait_for_function("document.querySelector('#start').textContent === 'Question open'")
+                    await page.locator('.answer-panel').wait_for()
+                    assert sum(c['target']=='PresenterStartActivity' for c in mock.commands) == activities_started + 1
+                    assert sum(c['target']=='PresenterStartSlideshow' for c in mock.commands) == classes_started + 1, 'Opening the question must reuse the class started from the ordinary slide'
+                    await press(0)
+                    await page.wait_for_function("document.querySelector('.answer-panel').hidden")
+                    await page.locator('#end').click()
+                    await page.wait_for_function("document.querySelector('#connection-label').textContent === 'Class ended'")
                     assert not errors, errors
                     await browser.close()
-                    print('PASS: controller navigation, held-button protection, 35 answers, scroll sync, fullscreen, mobile, 18 unique star recipients, empty-question close and late-answer close without stars')
+                    print('PASS: controller navigation, held-button protection, 35 answers, scroll sync, fullscreen, mobile, 18 unique star recipients, empty-question close, late-answer close without stars and class-only startup from an ordinary slide')
                     print(f'Screenshots: {shots}')
             finally:
                 await runner.cleanup()
