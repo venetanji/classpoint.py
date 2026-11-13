@@ -7,7 +7,7 @@ from aiohttp import web
 from playwright.async_api import async_playwright
 
 from deck import render_deck
-from presenter import create_app, installed_chromium
+from presenter import BRIDGE, create_app, installed_chromium
 from validate import MockClassPoint, MockProfile, free_port, serve
 
 
@@ -32,7 +32,8 @@ async def main():
                 'question("short_answer","A second question")],"TEST")}\n')
             deck = render_deck(root / 'site', root / 'course', 'week01')
             port = free_port()
-            runner, url = await serve(create_app(profile, deck, port), port)
+            app = create_app(profile, deck, port)
+            runner, url = await serve(app, port)
             try:
                 async with async_playwright() as pw:
                     browser = await pw.chromium.launch(executable_path=installed_chromium())
@@ -131,11 +132,39 @@ async def main():
                     assert sum(c['target']=='GivePointsToParticipants' for c in mock.commands) == 1, 'Closing an empty question must not award stars'
                     await press(0)
                     await page.wait_for_function("document.querySelector('.answer-panel').hidden")
+                    await page.locator('#start').click()
+                    await page.wait_for_function("document.querySelector('#start').textContent === 'Question open'")
+                    await page.frame_locator('#deck').locator('[data-classpoint]').nth(1).click()
+                    await page.locator('.answer-panel').wait_for()
+                    await page.wait_for_function("document.querySelector('#finish-question').textContent === 'Close submissions'")
+                    empty_state = app[BRIDGE].state()
+                    assert empty_state['respondents'] == 0
+                    # Deliver an answer to the bridge before the next browser poll.
+                    async def freeze_empty_state(route):
+                        await route.fulfill(json=empty_state)
+                    await page.route('**/api/state', freeze_empty_state)
+                    try:
+                        await mock.event('ParticipantSubmittedResponse', {
+                            'activityId': mock.activity, 'responseId': 'synthetic-late',
+                            'participantId': 'participant-late', 'responseData': '<p>A late synthetic answer</p>'})
+                        async def wait_for_late_answer():
+                            while app[BRIDGE].state()['respondents'] != 1:
+                                await asyncio.sleep(0.01)
+                        await asyncio.wait_for(wait_for_late_answer(), timeout=5)
+                        assert await page.locator('#finish-question').inner_text() == 'Close submissions'
+                        await page.locator('#finish-question').click()
+                        await page.wait_for_function("document.querySelector('#connection-label').textContent === 'Live / submissions closed'")
+                        assert app[BRIDGE].state()['stars_status'] == 'ready'
+                        assert sum(c['target']=='GivePointsToParticipants' for c in mock.commands) == 1, 'A close-only button must not award a response received before the next UI poll'
+                    finally:
+                        await page.unroute('**/api/state', freeze_empty_state)
+                    await press(0)
+                    await page.wait_for_function("document.querySelector('.answer-panel').hidden")
                     await page.locator('#end').click()
                     await page.wait_for_function("document.querySelector('#connection-label').textContent === 'Class ended'")
                     assert not errors, errors
                     await browser.close()
-                    print('PASS: controller navigation, held-button protection, 35 answers, scroll sync, fullscreen, mobile, 18 unique star recipients and empty-question close')
+                    print('PASS: controller navigation, held-button protection, 35 answers, scroll sync, fullscreen, mobile, 18 unique star recipients, empty-question close and late-answer close without stars')
                     print(f'Screenshots: {shots}')
             finally:
                 await runner.cleanup()

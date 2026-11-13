@@ -31,7 +31,7 @@ class AnswerPanel {
       this.finish.id = "finish-question";
       this.finish.className = "primary";
       this.finish.type = "button";
-      this.finish.addEventListener("click", finish);
+      this.finish.addEventListener("click", () => this.hasRespondents ? finish() : close());
       this.root.querySelector("footer").append(this.close, this.finish);
     }
     if (scroll) this.list.addEventListener("scroll", scroll, { passive: true });
@@ -77,6 +77,7 @@ class AnswerPanel {
       : "Submissions are open. New answers appear here.");
     if (this.finish) {
       const hasRespondents = data.respondents > 0;
+      this.hasRespondents = hasRespondents;
       this.finish.disabled = busy || awarded || uncertain || !["open", "closed"].includes(data.phase)
         || (data.phase === "closed" && !hasRespondents);
       this.finish.textContent = busy ? "Working..." : awarded ? `Star awarded to ${data.stars_count} respondents`
