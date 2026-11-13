@@ -9,6 +9,7 @@ let pending;
 let reveal;
 let source;
 let lastSeen = 0;
+const answers = new AnswerPanel(document.body);
 
 function apply() {
   if (!pending || !reveal?.isReady()) return;
@@ -16,6 +17,8 @@ function apply() {
   code.textContent = pending.class_code || "";
   join.hidden = !pending.class_code;
   notice.hidden = true;
+  answers.update(pending.answers);
+  if (pending.answers?.visible) answers.applyScroll(pending.answers.scroll);
 }
 
 deck.addEventListener("load", async () => {

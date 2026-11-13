@@ -140,6 +140,59 @@ audience follows the operator's current Reveal slide, fragments and pause state
 over a local BroadcastChannel, and displays the join code returned by ClassPoint.
 Press **F** in the audience window for fullscreen and Escape to exit.
 
+## Gamepad And Text Answers
+
+Connect your PS5 DualSense, focus the presenter and press a button to let the
+browser discover it. The first detected press establishes a baseline; release
+and press again to navigate. Use the loopback presenter URL in Chromium.
+
+| PS5 control | Action |
+|---|---|
+| Circle, R1, D-pad right | Next Reveal step (including fragments) |
+| Square, L1, D-pad left | Previous Reveal step |
+| Triangle | Show or hide the active short-answer panel |
+| Cross | Hide the answer panel |
+| D-pad up/down or left stick | Scroll the open answer panel |
+
+Slide stepping pauses while the answer panel is open. Hide the panel to resume.
+Holding a navigation button advances once; scrolling repeats. Reconnection and
+returning to the tab require releasing held inputs before they act. Controllers
+must expose the browser's standard mapping; unknown layouts do not fire actions.
+Xbox equivalents are B/RB for forward, X/LB for back, Y for answers and A to hide.
+Controller buttons never start a remote class or award stars.
+
+Open a short-answer question using its slide badge or **Start class + question**.
+Its existing slide button opens the question and the answer panel together.
+After hiding the panel, click that same slide button to see the answers again;
+this reuses the activity, including after submissions are closed. Triangle also
+toggles the panel.
+The panel shows safe plain text without participant names, preserving the scroll
+position when new responses arrive. Arrow/Page/Home/End keys and the wheel also
+scroll. The audience window follows visibility, answers and scroll position;
+class controls stay on the laptop. The existing 512-response local ceiling is
+reported explicitly when reached.
+
+The footer offers **Close submissions only** and **Close + give each respondent
+1 star**. The latter waits for closure, then awards one class-participant star
+per unique respondent, even if they submitted multiple answers. Repeated clicks
+cannot repeat a confirmed award for that activity. A timeout or disconnect after
+dispatch leaves the award uncertain and disables retries; check ClassPoint before
+awarding again. These are participant stars, not stars saved on individual answers
+or reports. The command is grounded in the instructor's existing capture and
+current official presenter code; this implementation still needs a live test.
+
+For an entirely local rehearsal with 24 simulated answers and 12 respondents:
+
+```bash
+CLASSPOINT_CHROMIUM=/usr/bin/chromium uv run python rehearse.py
+```
+
+Open `http://127.0.0.1:8766`, move to a practice question and open it. Its banner
+identifies the simulation. No ClassPoint class is created and stars are simulated.
+`node test_gamepad.cjs`, `uv run python -m unittest test_stars`, and
+`uv run python validate_controls.py` exercise controller and answer/award behavior
+without a capture or remote account.
+
 Reloading the audience requests the current state from the operator. This is
 local window recovery, not remote ClassPoint reconnection. If the operator goes
 away, the audience displays a disconnected notice until it returns. Closing only
@@ -149,9 +202,12 @@ POC server.
 ## Configured Join Codes
 
 Integrations can set `Profile.class_options["classCode"]` to request and verify a
-selected join code. If ClassPoint returns a different code, startup fails before
-uploading the slide or opening the question and attempts to end the incomplete
-class. If cleanup cannot be confirmed, **End class** remains available for retry.
+selected join code. If ClassPoint resumes a different code, the explicit Start
+action selects the configured code once using `PresenterRestartClass`, preserving
+the captured capacity and keeping star resets disabled. It waits for the returned
+code before uploading the slide or opening the question. If the code still differs
+or selection fails, startup attempts to end the incomplete class. If cleanup cannot
+be confirmed, **End class** remains available for retry.
 The UI always displays the returned code; it never substitutes the requested
 value. Without an expected code, startup accepts and displays the returned code.
 
@@ -180,7 +236,7 @@ Image/text is source-backed, mock-tested and live-tested with a synthetic
 participant in one setup on 2026-10-21. The live test verified one image and one
 short answer; the three-answer limit and retry/update behavior remain unverified live.
 See [status and acceptance](../../docs/live-image-upload-handoff.md).
-Stars, quiz grading, countdowns, report persistence,
+Quiz grading, countdowns, report persistence,
 and automatic reconnect are not implemented. A fresh screenshot captures the
 specified slide/fragment in a headless browser, not live DOM edits or the current
 state of an interactive sketch/video in the presenting browser. Those require a

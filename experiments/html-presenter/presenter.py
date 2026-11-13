@@ -141,6 +141,8 @@ async def command(request: web.Request) -> web.Response:
                 result = await bridge.sync_slide(config, snapshot)
         elif action == "close":
             result = await bridge.close_submissions()
+        elif action == "finish":
+            result = await bridge.finish_question()
         elif action == "end":
             result = await bridge.end()
         else:
@@ -180,7 +182,7 @@ def create_app(profile: Profile, deck: Deck, port: int = 8765) -> web.Applicatio
     app.router.add_get("/", index)
     app.router.add_get("/api/bootstrap", bootstrap)
     app.router.add_get("/api/state", state)
-    app.router.add_post("/api/{action:start|activity|sync|close|end}", command)
+    app.router.add_post("/api/{action:start|activity|sync|close|finish|end}", command)
     app.router.add_static("/assets/", ROOT / "web")
     app.router.add_static("/deck/", deck.site)
     return app

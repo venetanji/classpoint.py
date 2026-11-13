@@ -1,4 +1,5 @@
-.venv/
+.venv
+.impeccable/
 __pycache__/
 *.pyc
 *.pcap

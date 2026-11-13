@@ -5,6 +5,7 @@ const elements = Object.fromEntries([
   "slide-position", "slide-title", "connection-label", "status-dot", "join-code",
   "join-note", "copy-code", "stage-code", "projected-code", "activity-note", "error",
   "response-count", "participant-count", "votes", "log", "region", "sync-status",
+  "gamepad-status", "gamepad-help",
 ].map(id => [id, document.getElementById(id)]));
 
 const activityLabels = { multiple_choice: "multiple-choice", image_upload: "image upload", short_answer: "short-answer" };
@@ -20,6 +21,78 @@ let syncTimer;
 let polling = false;
 let lastLog = "";
 const audienceChannel = new BroadcastChannel("deckgen-audience");
+let answersVisible = false;
+let answerScrollTimer;
+let answerOpener;
+const answers = new AnswerPanel(elements.stage, {
+  dismiss: () => toggleAnswers(false),
+  finish: () => run("finish"),
+  close: () => run("close"),
+  scroll: () => {
+    clearTimeout(answerScrollTimer);
+    answerScrollTimer = setTimeout(broadcastAudience, 40);
+  },
+});
+
+function answerData() {
+  return {
+    visible: answersVisible && state?.activity_type === "short_answer" && Boolean(state?.can_end),
+    activity: state?.active_slide,
+    title: boot?.slides[state?.active_slide]?.title || "ClassPoint answers",
+    responses: state?.responses || [], limited: state?.responses_limited,
+    phase: state?.phase, stars_status: state?.stars_status, stars_count: state?.stars_count,
+    error: localError || state?.error,
+  };
+}
+
+function toggleAnswers(visible = !answersVisible) {
+  if (visible && (state?.activity_type !== "short_answer" || !state?.can_end)) return;
+  if (visible && !answersVisible) answerOpener = document.activeElement;
+  answersVisible = visible;
+  render();
+  if (visible) answers.list.focus({ preventScroll: true });
+  else if (answerOpener?.isConnected) answerOpener.focus({ preventScroll: true });
+}
+
+function answerKeys(event) {
+  if (!answersVisible || event.target.matches?.("input,textarea,[contenteditable=true]")) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleAnswers(false);
+  } else if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    event.stopPropagation();
+    const distance = event.key.startsWith("Page") ? answers.list.clientHeight * 0.8 : 100;
+    if (event.key === "Home") answers.list.scrollTop = 0;
+    else if (event.key === "End") answers.list.scrollTop = answers.list.scrollHeight;
+    else answers.list.scrollTop += ["ArrowUp", "PageUp"].includes(event.key) ? -distance : distance;
+  }
+}
+document.addEventListener("keydown", answerKeys, true);
+
+const gamepad = new GamepadControls(action => {
+  if (!reveal || busy) return;
+  if (action === "answers") toggleAnswers();
+  else if (action === "dismiss") toggleAnswers(false);
+  else if (answersVisible) {
+    if (["up", "down"].includes(action)) answers.list.scrollTop += action === "up" ? -100 : 100;
+  } else if (action === "next") reveal.next();
+  else if (action === "previous") reveal.prev();
+});
+
+function pollGamepad(now) {
+  try {
+    const pad = gamepad.update(navigator.getGamepads?.() || [], now, !document.hidden);
+    elements["gamepad-status"].textContent = !navigator.getGamepads ? "Gamepad API unavailable in this browser"
+      : !pad ? "Gamepad: connect, then press a button"
+      : pad.mapping !== "standard" ? `Gamepad detected; unsupported button mapping: ${pad.id}` : `Gamepad connected: ${pad.id}`;
+  } catch {
+    elements["gamepad-status"].textContent = "Gamepad access unavailable. Use the local presenter URL in Chromium.";
+  }
+  requestAnimationFrame(pollGamepad);
+}
+requestAnimationFrame(pollGamepad);
 
 function broadcastAudience() {
   if (!boot || !state || !reveal?.isReady()) return;
@@ -28,6 +101,7 @@ function broadcastAudience() {
     type: "slide", title: boot.title, deck_url: boot.deck_url,
     reveal: { indexh: current.indexh, indexv: current.indexv, indexf: current.indexf, paused: current.paused },
     class_code: state.class_code,
+    answers: { ...answerData(), responses: answersVisible ? state.responses : [], scroll: answers.scrollRatio() },
   });
 }
 
@@ -80,10 +154,12 @@ function render() {
   elements.next.disabled = !reveal || working || reveal.isLastSlide();
   elements.fullscreen.disabled = !reveal;
   elements.audience.disabled = !reveal;
+  if (!state.can_end || state.activity_type !== "short_answer") answersVisible = false;
+  answers.update(answerData(), working);
   elements["slide-position"].textContent = `${selected.slide_index + 1} / ${boot.slides.length}`;
   elements["slide-title"].textContent = slide?.title || "";
   elements["activity-note"].textContent = activityLabel
-    ? `Click the ${activityLabel} badge inside the slide. Responses stay in the operator window.`
+    ? `Click the ${activityLabel} button inside the slide.${activityLabel === "short-answer" ? " It opens the question and its scrollable answers on the slides and audience screen." : " Responses stay in the operator window."}`
     : "This slide has no supported live activity.";
   const problem = localError || state.error;
   elements.error.hidden = !problem;
@@ -184,7 +260,7 @@ async function send(action, body = {}) {
   return result;
 }
 
-async function run(action) {
+async function run(action, showAnswers = false) {
   if (busy) return;
   if (["start", "activity"].includes(action)) {
     if (!canOpenQuestion()) return;
@@ -196,6 +272,7 @@ async function run(action) {
   render();
   try {
     await send(action, selected);
+    if (showAnswers && state.activity_type === "short_answer") answersVisible = true;
   } catch (error) {
     localError = error.message;
   } finally {
@@ -259,8 +336,9 @@ async function connectDeck() {
       event.preventDefault();
       event.stopPropagation();
       selected = selection();
-      if (!canOpenQuestion()) return;
-      run(state.can_end ? "activity" : "start");
+      if (state.can_end && state.active_slide === selected.slide_index && state.activity_type === "short_answer") {
+        toggleAnswers();
+      } else if (canOpenQuestion()) run(state.can_end ? "activity" : "start", true);
     };
     marker.addEventListener("click", open);
     marker.addEventListener("keydown", event => {
@@ -270,6 +348,7 @@ async function connectDeck() {
   const focusStyle = windowInside.document.createElement("style");
   focusStyle.textContent = "#ho-open,#ho-deck{display:none!important}[data-classpoint][role=button]:focus-visible{outline:4px solid #00544c;outline-offset:6px}";
   windowInside.document.head.append(focusStyle);
+  windowInside.document.addEventListener("keydown", answerKeys, true);
   slideChanged();
 }
 

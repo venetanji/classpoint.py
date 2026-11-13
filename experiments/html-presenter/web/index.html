@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Deckgen / ClassPoint presenter</title>
   <link rel="stylesheet" href="/assets/presenter.css">
+  <link rel="stylesheet" href="/assets/answers.css">
+  <script src="/assets/answers.js" defer></script>
+  <script src="/assets/gamepad.js" defer></script>
   <script src="/assets/presenter.js" defer></script>
 </head>
 <body>
@@ -32,6 +35,7 @@
         <span class="slide-title" id="slide-title"></span>
         <span class="sync-status" id="sync-status" role="status"></span>
       </nav>
+      <details class="controller"><summary id="gamepad-status">Gamepad: connect, then press a button</summary><p id="gamepad-help">PS5: circle / R1 / D-pad right: next step. Square / L1 / D-pad left: previous step. Triangle: show or hide answers. Cross: hide answers. D-pad up/down or left stick: scroll answers. Xbox equivalents: B / RB, X / LB, Y, A. Stars use the on-screen button.</p></details>
     </section>
 
     <aside class="session" aria-labelledby="session-heading">
