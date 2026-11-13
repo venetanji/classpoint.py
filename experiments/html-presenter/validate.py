@@ -67,6 +67,16 @@ class MockClassPoint:
                         "classCode": self.code_override or message["arguments"][2].get("classCode") or "MOCK01",
                         "participantList": [], "cpcsRegion": "cpcs-11",
                     })
+                elif target == "PresenterRestartClass":
+                    assert len(message["arguments"]) == 2
+                    assert message["arguments"][0].get("toolbarActions") is None
+                    options = message["arguments"][1]
+                    assert options["shouldResetStars"] is False
+                    assert options["isSaveGuests"] is False
+                    await self.event("ClassSessionUpdated", {
+                        "classCode": self.code_override or options["classCode"],
+                        "participantList": [], "cpcsRegion": "cpcs-11",
+                    })
                 elif target == "PresenterStartActivity":
                     dto = message["arguments"][0]
                     assert dto["activityType"] in {"Multiple Choice", "Image Upload", "Short Answer"}
@@ -534,4 +544,5 @@ async def main():
         await remote_runner.cleanup()
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

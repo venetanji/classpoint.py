@@ -39,6 +39,9 @@ class Bridge:
         self.resync_tasks = set()
         self.participants = {}
         self.responses = {}
+        self.respondents = set()
+        self.stars_status = "ready"
+        self.stars_count = 0
         self.responses_limited = False
         self.slide_message = None
         self.active_activity = None
@@ -72,6 +75,9 @@ class Bridge:
             "can_end": self.class_started,
             "active_slide": self.active_slide,
             "activity_choices": list(self.activity_choices),
+            "stars_status": self.stars_status,
+            "stars_count": self.stars_count,
+            "respondents": len(self.respondents),
             "expected_class_code": self.profile.class_options.get("classCode"),
         }
 
@@ -201,6 +207,9 @@ class Bridge:
                     continue
                 answer = normalize_response(self.activity_type, response.get("responseData"), self.activity_choices)
                 if answer is not None:
+                    participant = response.get("participantId")
+                    if isinstance(participant, str) and 0 < len(participant) <= 256:
+                        self.respondents.add(participant)
                     if self.activity_type == "image_upload":
                         answer["image_url"] = preview_url(answer["image_url"])
                     if identifier in self.responses or len(self.responses) < MAX_RESPONSES:
@@ -244,6 +253,9 @@ class Bridge:
             self.class_ready.clear()
             self.participants.clear()
             self.responses.clear()
+            self.respondents.clear()
+            self.stars_status = "ready"
+            self.stars_count = 0
             self.responses_limited = False
             self.entries.clear()
             self.slide_message = None
@@ -263,6 +275,17 @@ class Bridge:
                 )
                 await asyncio.wait_for(self.class_ready.wait(), timeout=10)
                 expected = self.profile.class_options.get("classCode")
+                if expected and str(self.class_code).casefold() != expected.casefold():
+                    # Startup can resume the account's previous code. Selecting a
+                    # fixed code requires the official client's separate command.
+                    self.log("Selecting the configured join code before opening the question.")
+                    self.class_ready.clear()
+                    await self.invoke(
+                        "PresenterRestartClass",
+                        {"email": self.profile.presenter["email"], "toolbarActions": None},
+                        {**self.profile.class_options, "isSaveGuests": False, "shouldResetStars": False},
+                    )
+                    await asyncio.wait_for(self.class_ready.wait(), timeout=10)
                 if expected and str(self.class_code).casefold() != expected.casefold():
                     raise RuntimeError("ClassPoint returned a different join code. End this session and check the configured class code.")
                 self.log("Class started. Students can join with the displayed code.")
@@ -313,6 +336,9 @@ class Bridge:
                     await self.invoke("PresenterEndActivity", {"email": self.profile.presenter["email"]})
                     self.activity_started = False
                 self.responses.clear()
+                self.respondents.clear()
+                self.stars_status = "ready"
+                self.stars_count = 0
                 self.responses_limited = False
                 self.activity_type = config["type"]
                 self.active_activity = activity_id(self.activity_type)
@@ -358,6 +384,32 @@ class Bridge:
             await self.invoke("PresenterCloseSubmission", {"email": self.profile.presenter["email"]})
             self.phase = "closed"
             self.log("Submissions closed. Responses remain visible here.")
+            return self.state()
+
+    async def finish_question(self) -> dict:
+        async with self.lock:
+            if not self.class_started or self.phase not in {"open", "closed"}:
+                raise RuntimeError("Open a question before closing and awarding stars.")
+            if self.stars_status == "awarded":
+                return self.state()
+            if self.stars_status == "uncertain":
+                raise RuntimeError("Check the stars in ClassPoint before any further awards; the previous request could not be confirmed.")
+            if self.phase == "open":
+                await self.invoke("PresenterCloseSubmission", {"email": self.profile.presenter["email"]})
+                self.phase = "closed"
+                self.log("Submissions closed. Responses remain visible here.")
+            participants = sorted(self.respondents)
+            if not participants:
+                return self.state()
+            # Points are additive and the captured protocol has no idempotency key.
+            # Reserve before sending; an ambiguous completion must never be retried.
+            self.stars_status = "uncertain"
+            await self.invoke("GivePointsToParticipants", {"email": self.profile.presenter["email"]}, [
+                {"participantId": participant, "points": 1} for participant in participants
+            ])
+            self.stars_status = "awarded"
+            self.stars_count = len(participants)
+            self.log(f"Awarded one star to each of {len(participants)} respondents.")
             return self.state()
 
     async def end(self) -> dict:
