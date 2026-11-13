@@ -241,8 +241,9 @@ class Bridge:
         self.log("Uploaded the HTML slide snapshot.")
         return image_url
 
-    async def start(self, config: dict, snapshot: Callable[[], Awaitable[bytes]]) -> dict:
-        config = {**config, **activity_options(config)}
+    async def start(self, config: dict, snapshot: Callable[[], Awaitable[bytes]], *, open_question: bool = True) -> dict:
+        if open_question:
+            config = {**config, **activity_options(config)}
         async with self.lock:
             if self.class_started or self.phase == "starting":
                 raise RuntimeError("End the current class before starting another one.")
@@ -259,10 +260,11 @@ class Bridge:
             self.responses_limited = False
             self.entries.clear()
             self.slide_message = None
-            self.activity_type = config["type"]
-            self.active_activity = activity_id(self.activity_type)
-            self.activity_choices = list(config["choices"])
-            self.active_slide = config["slide_index"]
+            self.activity_type = config["type"] if open_question else None
+            self.active_activity = activity_id(self.activity_type) if open_question else None
+            self.activity_choices = list(config["choices"]) if open_question else []
+            self.active_slide = config["slide_index"] if open_question else None
+            self.activity_started = False
             self.log("Rendering the HTML slide. No PowerPoint involved.")
             try:
                 image = await snapshot()
@@ -289,7 +291,7 @@ class Bridge:
                 if expected and str(self.class_code).casefold() != expected.casefold():
                     raise RuntimeError("ClassPoint returned a different join code. End this session and check the configured class code.")
                 self.log("Class started. Students can join with the displayed code.")
-                image_url = await self.upload_slide(image, self.active_activity)
+                image_url = await self.upload_slide(image, self.active_activity or activity_id())
                 self.slide_message = {
                     "email": self.profile.presenter["email"],
                     "totalSlideCount": config["total_slides"],
@@ -300,12 +302,16 @@ class Bridge:
                 }
                 await self.invoke("PresenterGotoStep", self.slide_message)
                 self.log("Sent the current HTML slide to ClassPoint's student viewer.")
-                await self.invoke("PresenterStartActivity", start_message(
-                    config, self.profile.presenter["email"], self.active_activity, image_url,
-                ))
-                self.activity_started = True
-                self.phase = "open"
-                self.log("Activity is open in the existing ClassPoint student app.")
+                if open_question:
+                    await self.invoke("PresenterStartActivity", start_message(
+                        config, self.profile.presenter["email"], self.active_activity, image_url,
+                    ))
+                    self.activity_started = True
+                    self.phase = "open"
+                    self.log("Activity is open in the existing ClassPoint student app.")
+                else:
+                    self.phase = "closed"
+                    self.log("Class is ready. Open a question from its slide when needed.")
                 return self.state()
             except Exception:
                 self.phase = "error"

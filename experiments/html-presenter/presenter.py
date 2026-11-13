@@ -130,11 +130,11 @@ async def command(request: web.Request) -> web.Response:
             raise ValueError("The command body must be a JSON object.")
         action = request.match_info["action"]
         bridge = request.app[BRIDGE]
-        if action in {"start", "activity", "sync"}:
-            config = request.app[DECK].selection(body, require_activity=action != "sync")
+        if action in {"start", "class", "activity", "sync"}:
+            config = request.app[DECK].selection(body, require_activity=action not in {"class", "sync"})
             snapshot = lambda: request.app[SNAPSHOTTER].capture(config)
-            if action == "start":
-                result = await bridge.start(config, snapshot)
+            if action in {"start", "class"}:
+                result = await bridge.start(config, snapshot, open_question=action == "start")
             elif action == "activity":
                 result = await bridge.open_activity(config, snapshot)
             else:
@@ -182,7 +182,7 @@ def create_app(profile: Profile, deck: Deck, port: int = 8765) -> web.Applicatio
     app.router.add_get("/", index)
     app.router.add_get("/api/bootstrap", bootstrap)
     app.router.add_get("/api/state", state)
-    app.router.add_post("/api/{action:start|activity|sync|close|finish|end}", command)
+    app.router.add_post("/api/{action:start|class|activity|sync|close|finish|end}", command)
     app.router.add_static("/assets/", ROOT / "web")
     app.router.add_static("/deck/", deck.site)
     return app
