@@ -31,7 +31,7 @@ class AnswerPanel {
       this.finish.id = "finish-question";
       this.finish.className = "primary";
       this.finish.type = "button";
-      this.finish.addEventListener("click", finish);
+      this.finish.addEventListener("click", () => this.hasRespondents ? finish() : close());
       this.root.querySelector("footer").append(this.close, this.finish);
     }
     if (scroll) this.list.addEventListener("scroll", scroll, { passive: true });
@@ -44,7 +44,7 @@ class AnswerPanel {
     this.title.textContent = data.title || "ClassPoint answers";
     const responses = data.responses || [];
     this.count.textContent = `${responses.length} answer${responses.length === 1 ? "" : "s"}${data.limited ? " (local limit reached)" : ""}`;
-    const key = JSON.stringify([data.activity, responses]);
+    const key = JSON.stringify([data.activity, data.phase, responses]);
     if (key !== this.lastKey) {
       this.lastKey = key;
       const top = this.activity === data.activity ? this.list.scrollTop : 0;
@@ -76,10 +76,16 @@ class AnswerPanel {
       : data.phase === "closed" ? "Submissions closed. Answers remain on screen."
       : "Submissions are open. New answers appear here.");
     if (this.finish) {
-      this.finish.disabled = busy || awarded || uncertain || !["open", "closed"].includes(data.phase);
+      const hasRespondents = data.respondents > 0;
+      this.hasRespondents = hasRespondents;
+      this.finish.disabled = busy || awarded || uncertain || !["open", "closed"].includes(data.phase)
+        || (data.phase === "closed" && !hasRespondents);
       this.finish.textContent = busy ? "Working..." : awarded ? `Star awarded to ${data.stars_count} respondents`
-        : uncertain ? "Check stars in ClassPoint" : data.phase === "closed" ? "Give each respondent 1 star" : "Close + give each respondent 1 star";
+        : uncertain ? "Check stars in ClassPoint" : !hasRespondents
+          ? data.phase === "closed" ? "No respondents to award" : "Close submissions"
+          : data.phase === "closed" ? "Give each respondent 1 star" : "Close + give each respondent 1 star";
       this.close.disabled = busy || data.phase !== "open";
+      this.close.textContent = data.phase === "closed" ? "Submissions closed" : "Close submissions only";
     }
   }
 

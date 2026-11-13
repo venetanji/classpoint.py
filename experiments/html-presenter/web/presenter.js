@@ -41,6 +41,7 @@ function answerData() {
     title: boot?.slides[state?.active_slide]?.title || "ClassPoint answers",
     responses: state?.responses || [], limited: state?.responses_limited,
     phase: state?.phase, stars_status: state?.stars_status, stars_count: state?.stars_count,
+    respondents: state?.respondents || 0,
     error: localError || state?.error,
   };
 }
@@ -149,6 +150,7 @@ function render() {
   elements.start.disabled = !canOpenQuestion();
   elements.start.textContent = working ? "Working..." : !state.can_end ? state.phase === "error" ? "Retry class + question" : "Start class + question" : state.phase === "open" && sameActivity ? "Question open" : "Open this question";
   elements.close.disabled = working || state.phase !== "open";
+  elements.close.textContent = state.phase === "closed" ? "Submissions closed" : "Close submissions";
   elements.end.disabled = working || !state.can_end;
   elements.previous.disabled = !reveal || working || reveal.isFirstSlide();
   elements.next.disabled = !reveal || working || reveal.isLastSlide();
